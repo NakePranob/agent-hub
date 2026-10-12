@@ -50,6 +50,7 @@ struct OverviewView: View {
     @State private var showingN8nDetail = false
     @State private var activeDiffId: Int? = nil
     @State private var showingSessions = false
+    @State private var showingApps = false
 
     var agent: AgentTask? { state.focusTask.map(state.cardTask) }
 
@@ -167,11 +168,20 @@ struct OverviewView: View {
                         .transition(.opacity)
                 }
 
+                // Every other pill, from the right card's "+N"
+                if showingApps {
+                    CardBackground(wash: nil)
+                    AgentPillsView(state: state, onDismiss: {
+                        withAnimation(.easeIn(duration: 0.16)) { showingApps = false }
+                    })
+                        .transition(.opacity)
+                }
+
                 // ↗ jump button — last in ZStack so it renders on top; hidden while any detail is open
                 #if !APPSTORE
-                let hideJumpButton = showingN8nDetail || state.showingPlanDetail || activeDiffId != nil || showingSessions
+                let hideJumpButton = showingN8nDetail || state.showingPlanDetail || activeDiffId != nil || showingSessions || showingApps
                 #else
-                let hideJumpButton = showingN8nDetail || activeDiffId != nil || showingSessions
+                let hideJumpButton = showingN8nDetail || activeDiffId != nil || showingSessions || showingApps
                 #endif
                 if !hideJumpButton {
                     Button(action: { openAgentTarget(agent) }) {
@@ -188,17 +198,20 @@ struct OverviewView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
-            .frame(width: 322)
 
-            // Right card: agent pills
+            // Right card: the other pills' logos, "+N" for the rest
             CardBackground(wash: nil) {
-                AgentPillsView(state: state)
+                AgentColumnView(state: state, showingAll: showingApps, onMore: {
+                    withAnimation(.easeIn(duration: 0.16)) { showingApps.toggle() }
+                })
             }
+            .frame(width: 36)
         }
         .onChange(of: state.focusId) { _, new in
             showingN8nDetail = false
             activeDiffId = nil
             showingSessions = false
+            showingApps = false
             #if !APPSTORE
             withAnimation(.easeIn(duration: 0.16)) { state.showingPlanDetail = false }
             #endif
@@ -210,7 +223,7 @@ struct OverviewView: View {
         }
         #endif
         .onChange(of: state.mode) { _, m in
-            if m != .expanded { showingSessions = false }
+            if m != .expanded { showingSessions = false; showingApps = false }
             #if !APPSTORE
             if m != .expanded { state.showingPlanDetail = false; activeDiffId = nil }
             #endif
@@ -4123,67 +4136,150 @@ struct TickerShimmerText: View {
     }
 }
 
-// MARK: - Agent pills (overview right card)
+// MARK: - Agent pills (overview right card, and its "+N" list)
 
-struct AgentPillsView: View {
+/// The overview's right card: the other pills' logos in a column, in their usual order.
+/// Three fit; past three the last slot is "+N", which opens them all in the left card.
+struct AgentColumnView: View {
     @ObservedObject var state: AppState
+    let showingAll: Bool
+    let onMore: () -> Void
     @State private var swapping = false
 
-    private var others: [AgentTask] {
-        state.tasks.filter { $0.id != state.focusId }
-    }
-
-    private var displayTasks: [AgentTask] {
-        Array(others.prefix(4))
-    }
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4)
-    ]
-
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(displayTasks) { task in
-                    #if !APPSTORE
-                    if task.id == "integration_music" {
-                        MusicPill(task: task, state: state, swapping: $swapping) {
-                            swapping = true
-                            state.setFocus(task.id)
-                            SoundEngine.shared.play("blip")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
-                        }
-                    } else if task.id == "integration_spotify" {
-                        SpotifyPill(task: task, swapping: $swapping) {
-                            swapping = true
-                            state.setFocus(task.id)
-                            SoundEngine.shared.play("blip")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
-                        }
-                    } else {
-                        AgentPill(task: task, state: state, swapping: $swapping) {
-                            swapping = true
-                            state.setFocus(task.id)
-                            SoundEngine.shared.play("blip")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
-                        }
-                    }
-                    #else
-                    AgentPill(task: task, state: state, swapping: $swapping) {
-                        swapping = true
-                        state.setFocus(task.id)
-                        SoundEngine.shared.play("blip")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
-                    }
-                    #endif
-                }
+        let others = state.tasks.filter { $0.id != state.focusId }
+        let shown = others.count > 3 ? Array(others.prefix(2)) : others
+        let hidden = others.dropFirst(shown.count)
+        VStack(spacing: 8) {
+            ForEach(shown) { task in
+                AgentIcon(task: task, swapping: $swapping) { focus(task) }
             }
-            .padding(.horizontal, 8)
-            Spacer(minLength: 0)
+            if !hidden.isEmpty {
+                Button(action: onMore) {
+                    Text(verbatim: "+\(hidden.count)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color(hex: showingAll ? "#F5F6F8" : "#8E939C"))
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.white.opacity(showingAll ? 0.10 : 0.04)))
+                        .overlay(alignment: .topTrailing) {
+                            if let mood = Self.urgent(hidden) {
+                                Circle().fill(Color(hex: mood.glowHex))
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: 1, y: -1)
+                            }
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// What the hidden pills most need: you, then an error, then work in progress.
+    static func urgent(_ tasks: some Sequence<AgentTask>) -> RobotMood? {
+        let moods = Set(tasks.map { RobotMood($0.state) })
+        return [RobotMood.needsYou, .error, .working].first(where: moods.contains)
+    }
+
+    private func focus(_ task: AgentTask) {
+        swapping = true
+        state.setFocus(task.id)
+        SoundEngine.shared.play("blip")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
+    }
+}
+
+/// A pill as its logo alone, one slot of the right card's column; its name shows on hover.
+struct AgentIcon: View {
+    let task: AgentTask
+    @Binding var swapping: Bool
+    let onTap: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onTap) {
+            PillLogo(task: task, size: 22)
+                .overlay(alignment: .topTrailing) {
+                    if let badge = task.pillBadge {
+                        PillBadgeView(badge: badge, taskColor: task.color)
+                            .scaleEffect(0.8)
+                            .offset(x: 4, y: -4)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .help(task.id == "integration_claude" ? ClaudeHost.pillName(hostApp: task.hostApp) : task.name)
+        .scaleEffect(isHovered ? 1.1 : 1.0)
+        .brightness(isHovered ? 0.06 : 0)
+        .onHover { newHover in
+            guard !swapping else { return }
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) { isHovered = newHover }
+        }
+    }
+}
+
+/// Every pill but the focused one, with their names, over the left card. Opened by the
+/// right card's "+N"; a click focuses that pill, which closes the list.
+struct AgentPillsView: View {
+    @ObservedObject var state: AppState
+    let onDismiss: () -> Void
+    @State private var swapping = false
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 3)
+
+    var body: some View {
+        let others = state.tasks.filter { $0.id != state.focusId }
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onDismiss) {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 8, weight: .medium))
+                    Text("Apps")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(verbatim: "\(others.count)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#6B7079"))
+                }
+                .foregroundColor(Color(hex: "#F5F6F8"))
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 4)
+            .padding(.top, 6)
+            .padding(.bottom, 1)
+
+            // Two rows show; more scroll.
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVGrid(columns: columns, spacing: 4) {
+                    ForEach(others) { task in
+                        #if !APPSTORE
+                        if task.id == "integration_music" {
+                            MusicPill(task: task, state: state, swapping: $swapping) { focus(task) }
+                        } else if task.id == "integration_spotify" {
+                            SpotifyPill(task: task, swapping: $swapping) { focus(task) }
+                        } else {
+                            AgentPill(task: task, state: state, swapping: $swapping) { focus(task) }
+                        }
+                        #else
+                        AgentPill(task: task, state: state, swapping: $swapping) { focus(task) }
+                        #endif
+                    }
+                }
+                .padding(4)   // room for the pills' hover scale and badges
+            }
+        }
+        .padding(.leading, 104)
+        .padding(.trailing, 6)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onExitCommand { onDismiss() }
+    }
+
+    private func focus(_ task: AgentTask) {
+        swapping = true
+        state.setFocus(task.id)
+        SoundEngine.shared.play("blip")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
     }
 }
 
