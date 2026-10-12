@@ -3758,9 +3758,9 @@ struct N8nDetailView: View {
 
 // MARK: - Session row
 
-/// The sessions sharing one pill, side by side in the card's title row: each one's
-/// folder, with a dot for what it is doing. A click shows that session in the card.
-/// Past two sessions the row keeps two chips and a "+N" that opens the full list.
+/// The card's title row when several sessions share one pill: the shown session's
+/// folder in full, with a dot for what it is doing, then "+N" for the others. Its dot is
+/// the most urgent of theirs, and a click opens the list to switch sessions.
 struct SessionLaneRow: View {
     let pillId: String
     let lanes: [PillSessionRegistry.Lane]
@@ -3768,46 +3768,30 @@ struct SessionLaneRow: View {
     let onMore: () -> Void
 
     var body: some View {
-        // In order of arrival, so chips never swap under the pointer; the shown session
-        // always holds the second chip when it is not the first.
-        let shownIdx = lanes.firstIndex { $0.id == shownId } ?? 0
-        let visible = lanes.count > 2 ? [0, max(1, shownIdx)] : Array(lanes.indices)
-        let hidden = lanes.indices.filter { !visible.contains($0) }.map { lanes[$0] }
-        HStack(spacing: 4) {
-            ForEach(visible, id: \.self) { i in
-                let lane = lanes[i]
-                let isShown = lane.id == shownId
-                Button {
-                    AppState.shared.pickedLane[pillId] = lane.id
-                } label: {
-                    HStack(spacing: 4) {
-                        Circle().fill(Self.dot(lane)).frame(width: 5, height: 5)
-                        // Middle: "coucou-web" and "coucou-api" stay apart as "cou…web", "cou…api".
-                        Text(Self.label(i, in: lanes))
-                            .font(.system(size: 11, weight: isShown ? .semibold : .regular))
-                            .foregroundColor(Color(hex: isShown ? "#F5F6F8" : "#8E939C"))
-                            .lineLimit(1).truncationMode(.middle)
-                    }
-                    .chip(selected: isShown)
+        let shown = lanes.firstIndex { $0.id == shownId } ?? 0
+        let others = lanes.indices.filter { $0 != shown }.map { lanes[$0] }
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Self.dot(lanes[shown]))
+                .frame(width: 7, height: 7)
+            Text(Self.label(shown, in: lanes))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Color(hex: "#F5F6F8"))
+                .lineLimit(1).truncationMode(.middle)
+                .help(lanes[shown].cwd)
+            Button(action: onMore) {
+                HStack(spacing: 4) {
+                    Circle().fill(Self.dot(waiting: others.contains(where: \.isWaiting),
+                                           working: others.contains(where: \.isWorking)))
+                        .frame(width: 5, height: 5)
+                    Text("+\(others.count)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#8E939C"))
                 }
-                .buttonStyle(.plain)
-                .help(lane.cwd)
+                .fixedSize()
+                .chip(selected: false)
             }
-            if !hidden.isEmpty {
-                Button(action: onMore) {
-                    HStack(spacing: 4) {
-                        Circle().fill(Self.dot(waiting: hidden.contains(where: \.isWaiting),
-                                               working: hidden.contains(where: \.isWorking)))
-                            .frame(width: 5, height: 5)
-                        Text("+\(hidden.count)")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "#8E939C"))
-                            .fixedSize()
-                    }
-                    .chip(selected: false)
-                }
-                .buttonStyle(.plain)
-            }
+            .buttonStyle(.plain)
             Spacer(minLength: 0)
         }
     }
