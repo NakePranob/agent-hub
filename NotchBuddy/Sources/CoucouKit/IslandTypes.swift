@@ -186,8 +186,17 @@ enum IslandConst {
     static let notchHeight: CGFloat = 32
     static let expandedWidth: CGFloat = 640
     static let earRadius: CGFloat   = 14
-    static let roundedCorner: CGFloat = 14    // hidden/peek/compact
-    static let expandedCorner: CGFloat = 22
+    static let roundedCorner: CGFloat = 8     // hidden/peek/compact (beeprio's island)
+    static let expandedCorner: CGFloat = 24
+    /// The concave curves out to either side where the island meets the top of the screen.
+    static let compactShoulder: CGFloat = 6
+    static let expandedShoulder: CGFloat = 24
+
+    /// The header sits in the menu bar's row, as tall as the notch, like the Mac's own menus.
+    /// The views were laid out under a 42 pt header (8 pt above a 34 pt row): they move up, and
+    /// the island gets shorter, by what the menu bar's row saves.
+    static let designHeaderBottom: CGFloat = 42
+    static func headerLift(nh: CGFloat) -> CGFloat { max(0, designHeaderBottom - nh) }
 
     static let viewLayouts: [IslandView: ViewLayout] = [
         // Home is the reference: height 150

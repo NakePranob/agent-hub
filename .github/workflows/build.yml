@@ -21,6 +21,9 @@ jobs:
       - name: Test screen geometry
         run: bash scripts/test-screen-geometry.sh
 
+      - name: Test the robot's wardrobe
+        run: bash scripts/test-robot-look.sh
+
       - name: Test Claude hook detection
         run: bash scripts/test-claude-hooks.sh
 

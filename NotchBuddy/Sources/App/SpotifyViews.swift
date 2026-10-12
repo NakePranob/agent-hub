@@ -29,10 +29,9 @@ struct SpotifyPill: View {
                 .stroke(Color(hex: task.color).opacity(isHovered ? 0.55 : 0.14), lineWidth: 1)
                 .allowsHitTesting(false)
 
-            // Mini Mochi at leading edge
+            // The app's logo at leading edge
             HStack(spacing: 0) {
-                MiniBotCanvasView(task: task, isDancing: controller.isPlaying)
-                    .frame(width: 22 / 0.6, height: 22 / 0.6)
+                PillLogo(task: task, size: 17)
                     .frame(width: 22, height: 22, alignment: .center)
                     .padding(.leading, 8)
                 Spacer()

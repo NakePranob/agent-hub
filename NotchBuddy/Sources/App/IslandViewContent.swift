@@ -4047,8 +4047,7 @@ struct AgentPill: View {
                     Capsule()
                         .stroke(Color(hex: effectiveColor).opacity(isHovered ? 0.55 : 0.14), lineWidth: 1)
                     HStack(spacing: 0) {
-                        MiniBotCanvasView(task: task)
-                            .frame(width: 22 / 0.6, height: 22 / 0.6)
+                        PillLogo(task: task, size: 17)
                             .frame(width: 22, height: 22, alignment: .center)
                             .padding(.leading, 8)
                         Spacer()
@@ -4112,10 +4111,9 @@ struct MusicPill: View {
                 .stroke(Color(hex: task.color).opacity(isHovered ? 0.55 : 0.14), lineWidth: 1)
                 .allowsHitTesting(false)
 
-            // Mini Mochi at leading edge
+            // The app's logo at leading edge
             HStack(spacing: 0) {
-                MiniBotCanvasView(task: task, isDancing: isPlaying)
-                    .frame(width: 22 / 0.6, height: 22 / 0.6)
+                PillLogo(task: task, size: 17)
                     .frame(width: 22, height: 22, alignment: .center)
                     .padding(.leading, 8)
                 Spacer()
@@ -4334,8 +4332,7 @@ struct ColumnAgentsView: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(others.prefix(4).enumerated()), id: \.1.id) { idx, task in
-                MiniBotCanvasView(task: task)
-                    .frame(width: 16 / 0.6, height: 16 / 0.6)
+                PillLogo(task: task, size: 13)
                     .frame(width: 16, height: 16)
                     .position(x: 0, y: CGFloat(50 + idx * 24))
                     .animation(.spring(response: 0.5, dampingFraction: 0.72).delay(Double(idx) * 0.035), value: idx)
@@ -4644,22 +4641,23 @@ struct CardBackground<Content: View>: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(hex: "#141518"))
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(hex: "#161719"))
                 .overlay(
-                    RadialGradient(
+                    // beeprio's island-wash: radial-gradient(90% 100% at 50% 150%, wash, transparent 72%)
+                    EllipticalGradient(
                         gradient: Gradient(stops: [
                             .init(color: washColor, location: 0),
-                            .init(color: .clear, location: 0.7)
+                            .init(color: .clear, location: 0.72)
                         ]),
-                        center: UnitPoint(x: 0.5, y: 1.3),
-                        startRadius: 0,
-                        endRadius: 280
+                        center: UnitPoint(x: 0.5, y: 1.5),
+                        startRadiusFraction: 0,
+                        endRadiusFraction: 2
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 22)
                         .stroke(Color.white.opacity(0.035), lineWidth: 1)
                 )
 
@@ -4678,22 +4676,23 @@ extension CardBackground where Content == EmptyView {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(hex: "#141518"))
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(hex: "#161719"))
                 .overlay(
-                    RadialGradient(
+                    // beeprio's island-wash: radial-gradient(90% 100% at 50% 150%, wash, transparent 72%)
+                    EllipticalGradient(
                         gradient: Gradient(stops: [
                             .init(color: washColor, location: 0),
-                            .init(color: .clear, location: 0.7)
+                            .init(color: .clear, location: 0.72)
                         ]),
-                        center: UnitPoint(x: 0.5, y: 1.3),
-                        startRadius: 0,
-                        endRadius: 280
+                        center: UnitPoint(x: 0.5, y: 1.5),
+                        startRadiusFraction: 0,
+                        endRadiusFraction: 2
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .clipShape(RoundedRectangle(cornerRadius: 22))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 22)
                         .stroke(Color.white.opacity(0.035), lineWidth: 1)
                 )
         }

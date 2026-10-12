@@ -45,7 +45,10 @@ enum IslandScreenGeometryTests {
             precondition(compact.botDiameter == min(20, height - 6))
             precondition(compact.botCenterY - compact.botDiameter / 2 >= 3)
             precondition(compact.botCenterY + compact.botDiameter / 2 <= height - 3)
-            precondition(compact.miniGridCenterX == 200)
+            // The bot and the other pills each sit in the middle of their ear (44 pt, beeprio's).
+            precondition(compact.botCenterX == 22)
+            precondition(compact.miniGridCenterX == 218)
+            precondition(compact.botDiameter <= IslandRestingLayout.side - 6)
             precondition(compact.miniGridScale * 28 <= height - 4)
         }
         print("Island screen geometry and resting layout: 13 cases passed")

@@ -35,8 +35,13 @@ struct IslandRestingLayout {
     let width: CGFloat
     let height: CGFloat
 
+    /// How far the resting island reaches past the notch on each side: beeprio's ear, the bot
+    /// in the left one and the other pills in the right.
+    static let side: CGFloat = 44
+
     var botDiameter: CGFloat { min(20, max(0, height - 6)) }
+    var botCenterX: CGFloat { Self.side / 2 }
     var botCenterY: CGFloat { height / 2 }
     var miniGridScale: CGFloat { min(1, max(0, height - 4) / 28) }
-    var miniGridCenterX: CGFloat { width - 40 }
+    var miniGridCenterX: CGFloat { width - Self.side / 2 }
 }

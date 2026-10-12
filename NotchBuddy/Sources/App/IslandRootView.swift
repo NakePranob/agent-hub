@@ -28,6 +28,7 @@ struct IslandContainer: View {
     @State private var cornerRadius: CGFloat = IslandConst.roundedCorner
     // topRadius > 0 → convex expanded corners; < 0 → concave ear cutouts
     @State private var islandTopRadius: CGFloat = 0
+    @State private var shoulder: CGFloat = 0
     @State private var greetNotif: Bool = false
 
     private let openSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)
@@ -56,7 +57,7 @@ struct IslandContainer: View {
         return ZStack(alignment: .topLeading) {
             // Black island shape
             IslandShape(width: islandWidth, height: islandHeight,
-                        cornerRadius: cornerRadius, topRadius: islandTopRadius)
+                        cornerRadius: cornerRadius, topRadius: islandTopRadius, shoulder: shoulder)
                 .fill(Color.black)
 
             // Content
@@ -75,11 +76,10 @@ struct IslandContainer: View {
                             .frame(width: islandWidth, height: islandHeight)
                             .clipShape(IslandShape(width: islandWidth, height: islandHeight,
                                                   cornerRadius: cornerRadius, topRadius: islandTopRadius))
-                        // Header overlaid: canvas CARD_Y=42 aligns exactly with header bottom,
-                        // matching normal view proportions (8pt top + 34pt header + card + 10pt bottom).
+                        // Header overlaid in the menu bar's row, as in the other views; the canvas
+                        // draws its card at its own fixed place under it.
                         IslandHeader(state: state)
-                            .frame(width: islandWidth, height: 34)
-                            .offset(y: 8)
+                            .frame(width: islandWidth, height: min(state.notchHeight, IslandConst.designHeaderBottom))
                     }
                     .transition(.opacity)
                 } else {
@@ -124,7 +124,8 @@ struct IslandContainer: View {
                 if state.mode == .compact {
                     CompactMiniGrid(state: state)
                         .scaleEffect(IslandRestingLayout(width: islandWidth, height: islandHeight).miniGridScale)
-                        .position(x: islandWidth - 40, y: islandHeight / 2)
+                        .position(x: IslandRestingLayout(width: islandWidth, height: islandHeight).miniGridCenterX,
+                                  y: islandHeight / 2)
                         .transition(.opacity)
                 }
             }
@@ -144,6 +145,7 @@ struct IslandContainer: View {
                 islandHeight     = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
                 cornerRadius     = cr
                 islandTopRadius  = tr
+                shoulder         = Self.shoulder(for: newMode)
             }
         }
         .onChange(of: state.view) { _, newView in
@@ -173,6 +175,7 @@ struct IslandContainer: View {
             islandHeight     = state.view == .prompt ? chatPromptHeight : h
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             islandTopRadius  = 0
+            shoulder         = Self.shoulder(for: state.mode)
         }
         .onReceive(NotificationCenter.default.publisher(for: .botGreet)) { _ in
             greetNotif.toggle()
@@ -190,6 +193,15 @@ struct IslandContainer: View {
     private func modeOrder(_ m: IslandMode) -> Int {
         switch m { case .hidden: return 0; case .compact: return 1; case .expanded: return 2 }
     }
+
+    /// None while hidden, where the island is the notch itself.
+    private static func shoulder(for mode: IslandMode) -> CGFloat {
+        switch mode {
+        case .hidden:   return 0
+        case .compact:  return IslandConst.compactShoulder
+        case .expanded: return IslandConst.expandedShoulder
+        }
+    }
 }
 
 // MARK: - Island shape
@@ -197,28 +209,50 @@ struct IslandContainer: View {
 // topRadius > 0  → convex rounded top corners (expanded mode)
 // topRadius < 0  → concave ear cutouts, |topRadius| = ear radius (compact/notch mode)
 // topRadius = 0  → sharp top corners (transient during animation)
+// shoulder > 0   → beeprio's shoulders: concave curves out past either side, down from the
+//                  top of the screen (only with topRadius ≥ 0; the fill, not the clips)
 
 struct IslandShape: Shape {
     var width: CGFloat
     var height: CGFloat
     var cornerRadius: CGFloat   // bottom corners
     var topRadius: CGFloat      // see above
+    var shoulder: CGFloat = 0
 
-    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>, CGFloat> {
-        get { .init(.init(.init(width, height), cornerRadius), topRadius) }
+    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { .init(.init(.init(width, height), cornerRadius), .init(topRadius, shoulder)) }
         set {
             width        = newValue.first.first.first
             height       = newValue.first.first.second
             cornerRadius = newValue.first.second
-            topRadius    = newValue.second
+            topRadius    = newValue.second.first
+            shoulder     = newValue.second.second
         }
     }
 
     func path(in rect: CGRect) -> Path {
         let cr = max(0, cornerRadius)
         var p  = Path()
+        // A cubic Bézier's handle for a quarter circle, as a share of its radius.
+        let k: CGFloat = 0.5522847498
+        let s = max(0, min(shoulder, height - cr))
 
-        if topRadius >= 0 {
+        if topRadius >= 0 && s > 0 {
+            // ── Shoulders (beeprio): flush with the top, flaring out to meet the screen's edge ──
+            p.move(to: CGPoint(x: -s, y: 0))
+            p.addLine(to: CGPoint(x: width + s, y: 0))
+            p.addCurve(to: CGPoint(x: width, y: s),
+                       control1: CGPoint(x: width + s - k * s, y: 0), control2: CGPoint(x: width, y: s - k * s))
+            p.addLine(to: CGPoint(x: width, y: height - cr))
+            p.addArc(center: CGPoint(x: width - cr, y: height - cr), radius: cr,
+                     startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+            p.addLine(to: CGPoint(x: cr, y: height))
+            p.addArc(center: CGPoint(x: cr, y: height - cr), radius: cr,
+                     startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            p.addLine(to: CGPoint(x: 0, y: s))
+            p.addCurve(to: CGPoint(x: -s, y: 0),
+                       control1: CGPoint(x: 0, y: s - k * s), control2: CGPoint(x: -s + k * s, y: 0))
+        } else if topRadius >= 0 {
             // ── Convex rounded top corners (expanded) ──────────────────────────
             let tr = min(topRadius, min(width / 2, height / 2))
             p.move(to: CGPoint(x: tr, y: 0))
@@ -280,27 +314,25 @@ struct BotPlacement: View {
     let islandH: CGFloat
 
     var body: some View {
-        let (cx, cy, diameter, opacity) = botPosition(mode: state.mode, view: state.view, islandW: islandW, islandH: islandH, uploadProgress: state.uploadProgress, hasNotch: state.hasNotch)
+        let (cx, cy, diameter, opacity) = botPosition(mode: state.mode, view: state.view, islandW: islandW, islandH: islandH, uploadProgress: state.uploadProgress, hasNotch: state.hasNotch, nh: state.notchHeight)
         let canvasSize = diameter / 0.6
-        let overhang: CGFloat = 40
         let isUploading = state.view == .uploading
 
         Group {
-            // No glow in uploading mode — the tiny dot doesn't need it
+            // The robot's light behind it, in its mood's colour (beeprio's island). None in
+            // uploading mode: the tiny dot doesn't need it.
             if state.mode == .expanded && !isUploading {
                 Circle()
                     .fill(RadialGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: botGlowColor(state.effectiveState), location: 0),
-                            .init(color: .clear, location: 0.62)
+                        gradient: Gradient(colors: [
+                            Color(hex: RobotMood(state.effectiveState).glowHex).opacity(0.4),
+                            .clear
                         ]),
                         center: .center,
                         startRadius: 0,
-                        endRadius: diameter * 1.1
+                        endRadius: diameter * 0.84
                     ))
-                    .frame(width: diameter * 2.2, height: diameter * 2.2)
-                    .blur(radius: 6)
-                    .opacity(botGlowOpacity(state.effectiveState))
+                    .frame(width: diameter * 1.68, height: diameter * 1.68)
                     .position(x: cx, y: cy)
                     .animation(.easeInOut(duration: 0.4), value: state.effectiveState)
             }
@@ -320,18 +352,18 @@ struct BotPlacement: View {
                     let t = min(1.0, max(0, elapsed / state.uploadDuration))
                     // cx = 36 + 526*t: bot center at fill right edge (bar left=36, width=526)
                     let uploadCx = 36 + CGFloat(t * (2 - t)) * 526
-                    BotCanvasView(state: state, particleOverhang: 0, paused: state.mochiOnDesktop)
+                    IslandRobotView(state: state, paused: state.mochiOnDesktop)
                         .frame(width: canvasSize, height: canvasSize)
                         .opacity(state.isDraggingBot || state.mochiOnDesktop ? 0 : opacity)
                         .position(x: uploadCx, y: cy)
                 }
                 .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             } else {
-                // Invisible while Mochi lives on the desktop: no drawing either.
-                BotCanvasView(state: state, particleOverhang: overhang, paused: state.mochiOnDesktop)
-                    .frame(width: canvasSize, height: canvasSize + overhang)
+                // Invisible while the robot lives on the desktop: no drawing either.
+                IslandRobotView(state: state, paused: state.mochiOnDesktop || state.isDraggingBot)
+                    .frame(width: canvasSize, height: canvasSize)
                     .opacity(state.isDraggingBot || state.mochiOnDesktop ? 0 : opacity)
-                    .position(x: cx, y: cy - overhang / 2)
+                    .position(x: cx, y: cy)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: cx)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: cy)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: canvasSize)
@@ -346,35 +378,16 @@ struct BotPlacement: View {
         .allowsHitTesting(false)
     }
 
-    private func botGlowColor(_ s: BotState) -> Color {
-        switch s {
-        case .working:   return Color(hex: "#3B9EFF")
-        case .thinking:  return Color(hex: "#A78BFA")
-        case .searching: return Color(hex: "#6366F1")
-        case .approval:  return Color(hex: "#F5A524")
-        case .error:     return Color(hex: "#F4505E")
-        case .finished:  return Color(hex: "#34D399")
-        case .ratelimit: return Color(hex: "#F59E0B")
-        default:         return Color.white
-        }
-    }
-
-    private func botGlowOpacity(_ s: BotState) -> Double {
-        switch s {
-        case .idle, .sleeping: return 0.15
-        case .dizzy:           return 0.0
-        default:               return 0.65
-        }
-    }
 }
 
-func botPosition(mode: IslandMode, view: IslandView, islandW: CGFloat, islandH: CGFloat, uploadProgress: Double, hasNotch: Bool = true) -> (CGFloat, CGFloat, CGFloat, Double) {
+func botPosition(mode: IslandMode, view: IslandView, islandW: CGFloat, islandH: CGFloat, uploadProgress: Double, hasNotch: Bool = true,
+                 nh: CGFloat = IslandConst.notchHeight) -> (CGFloat, CGFloat, CGFloat, Double) {
     let resting = IslandRestingLayout(width: islandW, height: islandH)
     switch mode {
     case .hidden:
         return hasNotch ? (46, 16, 6, 0)
             : (islandW / 2, resting.botCenterY, resting.botDiameter, 1)
-    case .compact: return (40, resting.botCenterY, resting.botDiameter, 1)
+    case .compact: return (resting.botCenterX, resting.botCenterY, resting.botDiameter, 1)
     case .expanded:
         let layout = IslandConst.viewLayouts[view]!
         let diameter = layout.botDiameter
@@ -390,8 +403,8 @@ func botPosition(mode: IslandMode, view: IslandView, islandW: CGFloat, islandH: 
         if let fixedY = layout.botY {
             cy = fixedY
         } else {
-            // Center of the fixed 84pt card (VStack top=8, header=34 → content starts at y=42)
-            let headerBottom: CGFloat = 42
+            // Center of the fixed 84pt card, under the header in the menu bar's row
+            let headerBottom: CGFloat = IslandConst.designHeaderBottom - IslandConst.headerLift(nh: nh)
             let cardH: CGFloat = 84
             cy = headerBottom + (islandH - headerBottom - cardH) / 2 + cardH / 2
         }
@@ -481,8 +494,10 @@ struct IslandContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // In the menu bar's row, as tall as the notch, like the Mac's own menus.
             IslandHeader(state: state)
-                .frame(height: 34)
+                .frame(height: min(state.notchHeight, IslandConst.designHeaderBottom))
+                .padding(.bottom, max(0, state.notchHeight - IslandConst.designHeaderBottom))
                 .opacity(state.view == .confused ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: state.view == .confused)
 
@@ -512,7 +527,6 @@ struct IslandContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 10)
         }
-        .padding(.top, 8)
         .padding(.bottom, 10)
         .foregroundColor(Color(hex: "#F5F6F8"))
     }
@@ -713,8 +727,7 @@ struct CompactMiniGrid: View {
         let cols = [GridItem(.fixed(12), spacing: 4), GridItem(.fixed(12), spacing: 4)]
         LazyVGrid(columns: cols, spacing: 4) {
             ForEach(others) { task in
-                MiniBotCanvasView(task: task)
-                    .frame(width: 12 / 0.6, height: 12 / 0.6)
+                PillLogo(task: task, size: 10)
                     .frame(width: 12, height: 12, alignment: .center)
             }
         }

@@ -697,12 +697,8 @@ final class IslandWindowController: NSWindowController {
             DesktopMochiController.shared.flyOutOrHome()
 
         case .wardrobeToggle:
-            if state.mode == .expanded && state.view == .wardrobe {
-                collapse()
-            } else {
-                islandPanel.makeKey()
-                expand(to: .wardrobe)
-            }
+            // The robot is dressed in Settings → Character.
+            NotificationCenter.default.post(name: .openFullSettings, object: "character")
 
         case .talkToCoucou:
             #if !APPSTORE
@@ -888,15 +884,8 @@ final class IslandWindowController: NSWindowController {
         }
 
         // Wardrobe open/close from desktop Mochi right-click (does NOT post .hookExpand)
-        NotificationCenter.default.addObserver(forName: .openWardrobeFromDesktop, object: nil, queue: .main) { [weak self] _ in
-            guard let self else { return }
-            if self.state.mode == .expanded && self.state.view == .wardrobe {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    self.state.view = .overview
-                }
-            } else {
-                self.expand(to: .wardrobe)
-            }
+        NotificationCenter.default.addObserver(forName: .openWardrobeFromDesktop, object: nil, queue: .main) { _ in
+            NotificationCenter.default.post(name: .openFullSettings, object: "character")
         }
 
         // .botDizzy — posted by BotEngine.slap() on 3rd hit; show confused view + recover after 3.3s
@@ -1026,13 +1015,8 @@ final class IslandWindowController: NSWindowController {
             MainActor.assumeIsolated {
                 guard self.wasInIsland, self.isBotHit(event.locationInWindow) else { return }
                 guard !self.state.mochiOnDesktop else { return }
-                if self.state.mode == .expanded && self.state.view == .wardrobe {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        self.state.view = .overview
-                    }
-                } else {
-                    self.expand(to: .wardrobe)
-                }
+                // A right-click on the robot dresses it: Settings → Character.
+                NotificationCenter.default.post(name: .openFullSettings, object: "character")
             }
             return event
         }
@@ -1323,7 +1307,8 @@ final class IslandWindowController: NSWindowController {
         let islandMinX = (panelW - islandW) / 2
         let (cx, cy, diameter, _) = botPosition(mode: s.mode, view: s.view,
                                                   islandW: islandW, islandH: islandH,
-                                                  uploadProgress: s.uploadProgress, hasNotch: s.hasNotch)
+                                                  uploadProgress: s.uploadProgress, hasNotch: s.hasNotch,
+                                                  nh: s.notchHeight)
         let radius = (diameter / 0.6) / 2
         // botPosition cy is from island TOP; panel AppKit coords have y=0 at bottom
         // island top in AppKit coords = panelH (island glued to top of panel/screen)
@@ -1437,7 +1422,7 @@ struct GhostBotView: View {
     @State private var scale: CGFloat = 0.35
 
     var body: some View {
-        BotCanvasView(state: AppState.shared)
+        IslandRobotView(state: AppState.shared)
             .frame(width: canvasSize, height: canvasSize)
             .scaleEffect(scale)
             .onAppear {
@@ -2030,12 +2015,16 @@ func islandSize(mode: IslandMode, view: IslandView,
                 nh: CGFloat = IslandConst.notchHeight) -> (CGFloat, CGFloat) {
     switch mode {
     case .hidden:   return (nw, nh)
-    case .compact:  return (nw + 160, nh)
+    case .compact:  return (nw + 2 * IslandRestingLayout.side, nh)
     case .expanded:
         let layout = IslandConst.viewLayouts[view]!
+        // The header in the menu bar's row: the island is shorter by what that saves, except in
+        // the views that draw themselves at fixed places (greeting, upload) and the chat, sized apart.
+        let lift = IslandConst.headerLift(nh: nh)
         if view == .question, let h = QuestionLayout.height {
-            return (IslandConst.expandedWidth, h)
+            return (IslandConst.expandedWidth, h - lift)
         }
-        return (IslandConst.expandedWidth, layout.height)
+        let lifts = layout.botY == nil && view != .prompt
+        return (IslandConst.expandedWidth, layout.height - (lifts ? lift : 0))
     }
 }

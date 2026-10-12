@@ -18,7 +18,7 @@ cd NotchBuddy && xcodegen && xcodebuild -scheme NotchBuddy -configuration Debug 
 Windows and Linux: `cd windows && npm install && npm run tauri dev`
 
 ## Rules
-- Swift 6, SwiftUI + AppKit. No third-party dependencies unless truly unavoidable. The character is drawn in code (`Canvas` + `TimelineView`), no Rive/Lottie/images.
+- Swift 6, SwiftUI + AppKit. No third-party dependencies unless truly unavoidable. The character is the 3D robot in `NotchBuddy/Sources/App/Robot/`, drawn in code with Metal: geometry built in Swift, shaders compiled at launch from source, lighting from MatCaps baked at launch, the face drawn in the shader. No Rive/Lottie/SceneKit/images. Mochi (`Canvas` + `TimelineView`) still draws the launch greeting, the file upload and the iPhone app until they move to the robot.
 - Secrets live in the Keychain, never on disk or in git.
 - No telemetry. Network calls only to services the user configured.
 - Never block Claude Code: if the app doesn't answer, the hook exits immediately.

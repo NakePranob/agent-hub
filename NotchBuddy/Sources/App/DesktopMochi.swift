@@ -15,11 +15,14 @@ final class DesktopBotViewState: ObservableObject {
     /// Bot center in the same coord space as AppState.mousePosition (DesktopSpace, y-down).
     /// Updated every poll frame; Canvas reads it inside TimelineView — @Published not needed.
     var lookOrigin: CGPoint = .zero
+    /// The robot the panel shows, for the controller's emotes and slaps.
+    let robot = RobotHandle()
 }
 
 // MARK: - Desktop bot view
 
-/// Full Mochi character rendered inside the desktop floating panel.
+/// The robot on the desktop, in its floating panel. The controller still drives Mochi's engine
+/// for its state and sounds; what it shows goes to the robot through `viewState.robot`.
 struct DesktopBotView: View {
     @ObservedObject var appState: AppState
     /// Engine owned by DesktopMochiController; controller calls methods on it directly.
@@ -27,63 +30,18 @@ struct DesktopBotView: View {
     @ObservedObject var viewState: DesktopBotViewState
 
     var body: some View {
-        TimelineView(.animation(paused: viewState.paused)) { timeline in
-            Canvas { ctx, size in
-                _ = timeline.date   // force redraw every tick (see BotCanvasView)
-
-                // Eye tracking based on the panel's own screen position
-                engine.lookX = tanh((appState.mousePosition.x - viewState.lookOrigin.x) / 260)
-                engine.lookY = -tanh((appState.mousePosition.y - viewState.lookOrigin.y) / 200)
-
-                // Desktop Mochi is always the "main" Mochi — always dressed
-                engine.setOutfit(appState.resolvedOutfit, animated: true)
-
-                // Dance when music plays (same rules as compact mode)
-                let dancing: Bool = {
-                    #if !APPSTORE
-                    let music = appState.musicPlaying && appState.activeIntegrations.contains("integration_music")
-                    let spotify = SpotifyController.shared.isPlaying
-                        && appState.activeIntegrations.contains(SpotifyController.pillId)
-                    guard music || spotify else { return false }
-                    let allowed: Set<BotState> = [.idle, .working, .thinking, .searching, .finished]
-                    return allowed.contains(appState.effectiveState)
-                    #else
-                    return false
-                    #endif
-                }()
-                engine.setDancing(dancing)
-                MochiFrameClock.advance(engine)
-
-                var c = ctx
-                engine.applyDance(&c, size: size)
-
-                // Rigid roll when outfit is present (matches BotCanvasView)
-                if engine.outfit != .none && engine.outfitPresence > 0.05 && abs(engine.roll) > 0.001 {
-                    let center = engine.bodyCenter(size: size)
-                    var rigidCtx = c
-                    rigidCtx.translateBy(x: center.x, y: center.y)
-                    rigidCtx.rotate(by: .radians(engine.roll))
-                    rigidCtx.translateBy(x: -center.x, y: -center.y)
-                    engine.drawHandsBehind(context: rigidCtx, size: size)
-                    engine.drawOutfitBehind(context: rigidCtx, size: size)
-                    engine.draw(context: rigidCtx, size: size)
-                    engine.drawOutfitFront(context: rigidCtx, size: size)
-                } else {
-                    engine.drawHandsBehind(context: c, size: size)
-                    engine.drawOutfitBehind(context: c, size: size)
-                    engine.draw(context: c, size: size)
-                    engine.drawOutfitFront(context: c, size: size)
-                }
-                engine.drawHandsAndExtras(context: c, size: size)
-            }
-        }
-        .onChange(of: appState.effectiveState) { _, newState in
-            engine.setState(newState)
-        }
-        .onAppear {
-            engine.setState(appState.effectiveState, force: true)
-            engine.setOutfit(appState.resolvedOutfit, animated: false)
-        }
+        let pill = appState.mainPillId
+        RobotView(look: appState.robotWardrobe.look(for: pill),
+                  mood: RobotMood(appState.effectiveState),
+                  paused: viewState.paused,
+                  asleep: viewState.isSleeping,
+                  patchLabel: RobotView.patchLabel(for: pill, wardrobe: appState.robotWardrobe),
+                  pointer: { [weak appState, weak viewState] in
+                      guard let appState, let viewState else { return nil }
+                      let look = botLook(state: appState, origin: viewState.lookOrigin)
+                      return SIMD2(Float(look.x) * 1.5, Float(look.y) * 1.5)
+                  },
+                  handle: viewState.robot)
     }
 }
 
@@ -201,6 +159,7 @@ final class DesktopMochiController {
 
         // Squash emote + sound on landing
         eng.triggerEmote(.happy, duration: 0.6, silent: true)
+        vs.robot.emote(.happy)
         SoundEngine.shared.play("pop")
 
         // Animate from current (ghost) size to 120 × 120, centered on drop point
@@ -221,6 +180,7 @@ final class DesktopMochiController {
                 let alertNow = AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil
                 if DesktopMochiLogic.shouldRetractOnLanding(alertActive: alertNow) {
                     self.engine?.triggerEmote(.surprised)
+                    self.viewState?.robot.emote(.surprised)
                     self.phase = .retracting
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                         guard let self else { return }
@@ -297,6 +257,7 @@ final class DesktopMochiController {
                 let alertNow = AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil
                 if DesktopMochiLogic.shouldRetractOnLanding(alertActive: alertNow) {
                     self.engine?.triggerEmote(.surprised)
+                    self.viewState?.robot.emote(.surprised)
                     self.phase = .retracting
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                         guard let self else { return }
@@ -430,6 +391,7 @@ final class DesktopMochiController {
                 guard let self, self.phase == .onDesktop else { return }
                 if newState == .finished {
                     self.engine?.triggerEmote(.happy, duration: 1.2, silent: true)
+                    self.viewState?.robot.emote(.happy)
                 }
             }
             .store(in: &cancellables)
@@ -452,6 +414,7 @@ final class DesktopMochiController {
             if alertActive {
                 guard self.phase == .onDesktop else { return }
                 self.engine?.triggerEmote(.surprised)
+                self.viewState?.robot.emote(.surprised)
                 self.phase = .retracting
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
                     guard let self else { return }
@@ -633,7 +596,7 @@ final class DesktopMochiController {
             flyHome()
         } else {
             pendingSlapWorkItem?.cancel()
-            let item = DispatchWorkItem { [weak self] in self?.engine?.slap() }
+            let item = DispatchWorkItem { [weak self] in self?.engine?.slap(); self?.viewState?.robot.jolt() }
             pendingSlapWorkItem = item
             DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: item)
         }
@@ -654,6 +617,7 @@ final class DesktopMochiController {
             AppState.shared.promptContext = ctx
             SoundEngine.shared.play("approve")
             engine?.triggerEmote(.happy, duration: 0.6, silent: true)
+            viewState?.robot.emote(.happy)
             let origin = clampToVisibleFrame(dragOriginAtStart)
             panel?.setFrameOrigin(origin)
             persistPosition()

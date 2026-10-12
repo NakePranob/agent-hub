@@ -191,93 +191,44 @@ struct BotCanvasView: View {
         }
     }
 
-    /// Where Mochi looks (the pointer), both axes at once: the island geometry and the
-    /// screen are looked up once per frame instead of twice each.
     private func lookXY(state: AppState) -> (x: CGFloat, y: CGFloat) {
-        if let origin = lookOriginOverride {
-            return (tanh((state.mousePosition.x - origin.x) / 260),
-                    -tanh((state.mousePosition.y - origin.y) / 200))
-        }
-        let (islandW, islandH) = islandSize(mode: state.mode, view: state.view,
-                                             progress: state.uploadProgress,
-                                             nw: state.notchWidth, nh: state.notchHeight)
-        let screen = IslandWindowController.islandScreen().frame
-        let desktopTop = IslandWindowController.desktopTop
-        // The pointer read now, not from the island poll (which slows down far from it).
-        let mouse = DesktopSpace.topDown(NSEvent.mouseLocation, desktopTop: desktopTop)
-        func botPoint(islandH: CGFloat) -> CGPoint {
-            let (botCx, botCy, _, _) = botPosition(mode: state.mode, view: state.view,
-                                                    islandW: islandW, islandH: islandH,
-                                                    uploadProgress: state.uploadProgress)
-            return DesktopSpace.topDown(CGPoint(x: screen.midX - islandW / 2 + botCx,
-                                                y: screen.maxY - botCy),
-                                        desktopTop: desktopTop)
-        }
-        let botX = botPoint(islandH: islandH)
-        // The chat view grows with the conversation: vertical look uses its real height.
-        let actualH: CGFloat = (state.mode == .expanded && state.view == .prompt)
-            ? min(300, 240 + CGFloat(state.chatHistory.count) * 40)
-            : islandH
-        let botY = actualH == islandH ? botX : botPoint(islandH: actualH)
-        return (tanh((mouse.x - botX.x) / 260),
-                -tanh((mouse.y - botY.y) / 200))
+        botLook(state: state, origin: lookOriginOverride)
     }
 }
 
-/// Mini bot canvas (for agent pills/column)
-struct MiniBotCanvasView: View {
-    let task: AgentTask
-    var isDancing: Bool = false
-    @StateObject private var engine: BotEngine
-
-    init(task: AgentTask, isDancing: Bool = false) {
-        self.task = task
-        self.isDancing = isDancing
-        _engine = StateObject(wrappedValue: {
-            let e = BotEngine()
-            e.isMini = true
-            e.bodyColor = cgColorFromHex(task.color)
-            return e
-        }())
+/// Where the island's character looks (the pointer), both axes at once, each −1…1 (y up): the
+/// island geometry and the screen are looked up once per frame instead of twice each. `origin`
+/// overrides the island's bot position (the desktop companion's).
+@MainActor
+func botLook(state: AppState, origin: CGPoint?) -> (x: CGFloat, y: CGFloat) {
+    if let origin {
+        return (tanh((state.mousePosition.x - origin.x) / 260),
+                -tanh((state.mousePosition.y - origin.y) / 200))
     }
-
-    @Environment(\.islandViewActive) private var viewActive
-
-
-    var body: some View {
-        // Display refresh rate. Paused in island views that are not shown.
-        TimelineView(.animation(paused: !viewActive)) { timeline in
-            let frame = timeline.date   // see BotCanvasView: redraw on every tick
-            Canvas { context, size in
-                _ = frame
-                engine.setDancing(isDancing)
-                MochiFrameClock.advance(engine)
-                var ctx = context
-                engine.applyDance(&ctx, size: size)
-                engine.draw(context: ctx, size: size)
-            }
-        }
-        .onChange(of: task.state) { _, newState in
-            engine.setState(newState)
-        }
-        // The colour is set once, when the engine is made: a colour picked in
-        // Settings has to reach a mini Mochi that is already on screen.
-        .onChange(of: task.color) { _, newColor in
-            engine.bodyColor = cgColorFromHex(newColor)
-        }
-        .onAppear {
-            engine.setState(task.state, force: true)
-            if let emote = task.emote {
-                engine.setPermanentEmote(emote)
-            }
-            // Direct eye override takes priority (e.g. .wide eyes for Research)
-            if let eye = task.miniEye {
-                engine.permanentEye = eye
-                engine.eyeOverride = eye
-                engine.eyeOverrideUntil = .greatestFiniteMagnitude
-            }
-        }
+    let (islandW, islandH) = islandSize(mode: state.mode, view: state.view,
+                                         progress: state.uploadProgress,
+                                         nw: state.notchWidth, nh: state.notchHeight)
+    let screen = IslandWindowController.islandScreen().frame
+    let desktopTop = IslandWindowController.desktopTop
+    // The pointer read now, not from the island poll (which slows down far from it).
+    let mouse = DesktopSpace.topDown(NSEvent.mouseLocation, desktopTop: desktopTop)
+    func botPoint(islandH: CGFloat) -> CGPoint {
+        let (botCx, botCy, _, _) = botPosition(mode: state.mode, view: state.view,
+                                                islandW: islandW, islandH: islandH,
+                                                uploadProgress: state.uploadProgress,
+                                                nh: state.notchHeight)
+        return DesktopSpace.topDown(CGPoint(x: screen.midX - islandW / 2 + botCx,
+                                            y: screen.maxY - botCy),
+                                    desktopTop: desktopTop)
     }
+    let botX = botPoint(islandH: islandH)
+    // The chat view grows with the conversation: vertical look uses its real height.
+    let actualH: CGFloat = (state.mode == .expanded && state.view == .prompt)
+        ? min(300, 240 + CGFloat(state.chatHistory.count) * 40)
+        : islandH
+    let botY = actualH == islandH ? botX : botPoint(islandH: actualH)
+    return (tanh((mouse.x - botX.x) / 260),
+            -tanh((mouse.y - botY.y) / 200))
 }
 
 // MARK: - Frame clock

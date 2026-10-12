@@ -178,6 +178,7 @@ struct SettingsView: View {
                         set: { if let v = $0 { selectedSection = v; statusMessage = "" } }
                     )) {
                         SettingsSidebarRow(title: "General",      icon: "gearshape.fill",                    color: "#8E939C").tag("general")
+                        SettingsSidebarRow(title: "Character",    icon: "face.smiling.inverse",              color: "#3AA8FF").tag("character")
                         SettingsSidebarRow(title: "Active pills", icon: "square.grid.2x2.fill",              color: "#F5A524").tag("activepills")
                         SettingsSidebarRow(title: "Agents",       icon: "terminal.fill",                     color: "#3B9EFF").tag("agents")
                         SettingsSidebarRow(title: "Chat",         icon: "bubble.left.and.bubble.right.fill", color: "#E07950").tag("chat")
@@ -249,6 +250,7 @@ struct SettingsView: View {
     private var sectionTitle: String {
         switch selectedSection {
         case "general":      return String(localized: "General")
+        case "character":    return String(localized: "Character")
         case "activepills":  return String(localized: "Active pills")
         case "agents":       return String(localized: "Agents")
         case "chat":         return String(localized: "Chat")
@@ -261,6 +263,7 @@ struct SettingsView: View {
 
     @ViewBuilder private var sectionContent: some View {
         switch selectedSection {
+        case "character":    CharacterSettingsView(state: state)
         case "activepills":  activePillsSection
         case "agents":       agentsSection
         case "chat":         chatSection

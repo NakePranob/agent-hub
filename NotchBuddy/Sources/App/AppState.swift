@@ -69,6 +69,11 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(recapHideProjects, forKey: "recapHideProjects") }
     }
 
+    // How each agent's robot is dressed (Settings → Character) — persisted.
+    @Published var robotWardrobe: RobotWardrobe = .stored {
+        didSet { RobotWardrobe.stored = robotWardrobe }
+    }
+
     // Mochi outfit selection — persisted
     @Published var mochiOutfitSelection: Outfit = .auto {
         didSet { Outfit.stored = mochiOutfitSelection }
