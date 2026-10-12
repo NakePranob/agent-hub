@@ -44,6 +44,27 @@ struct PillSessionRegistry {
         var hostApp: String? = nil
         /// Bundle id of the client (VS Code, Cursor…) that sent the event.
         var bundleId: String = ""
+        /// The session's folder name, which tells sessions apart on the card. An external
+        /// agent's `projectName` is the agent's own name, so its folder only shows here.
+        var folder: String = ""
+    }
+
+    /// One live session, as the card's session row shows it.
+    struct Lane: Equatable, Identifiable {
+        let id: String          // session id
+        var label: String
+        var cwd: String
+        var hostApp: String?
+        var bundleId: String
+        var isWorking: Bool
+        /// Waiting on a permission or a question. The registry doesn't know: HookServer
+        /// sets it from its approval queue when it publishes the lanes.
+        var isWaiting = false
+        /// This session's own ticker lines, oldest first.
+        var steps: [String]
+        /// When it last went from idle to working: the card follows the session you
+        /// prompted last, so two sessions working side by side don't make it flicker.
+        var turnStartedAt: Date
     }
 
     private struct Session {
@@ -53,7 +74,13 @@ struct PillSessionRegistry {
         var bundleId: String
         var isWorking: Bool
         var lastSeen: Date
+        var turnStartedAt: Date
+        var folder = ""
+        var steps: [String] = []
     }
+
+    /// Ticker lines kept per session, like the pill's own log.
+    static let maxSteps = 20
 
     private struct Pill {
         /// Live sessions, oldest first. The first one owns name and cwd.
@@ -77,15 +104,25 @@ struct PillSessionRegistry {
         var session = p.sessions[display.session]
             ?? Session(projectName: display.projectName, cwd: display.cwd,
                        hostApp: display.hostApp, bundleId: display.bundleId,
-                       isWorking: false, lastSeen: now)
+                       isWorking: false, lastSeen: now, turnStartedAt: now)
         session.projectName = display.projectName
         if !display.cwd.isEmpty { session.cwd = display.cwd }
         if display.hostApp != nil { session.hostApp = display.hostApp }
         if !display.bundleId.isEmpty { session.bundleId = display.bundleId }
+        if !display.folder.isEmpty { session.folder = display.folder }
+        if working && !session.isWorking { session.turnStartedAt = now }
         if working { session.isWorking = true }
         session.lastSeen = now
         p.sessions[display.session] = session
         pills[pill] = p
+    }
+
+    /// Adds a ticker line to one session's own log. A session never noted stays untracked.
+    mutating func appendStep(pill: String, session: String, step: String) {
+        pills[pill]?.sessions[session]?.steps.append(step)
+        if let count = pills[pill]?.sessions[session]?.steps.count, count > Self.maxSteps {
+            pills[pill]?.sessions[session]?.steps.removeFirst(count - Self.maxSteps)
+        }
     }
 
     // MARK: - Terminal events
@@ -136,6 +173,17 @@ struct PillSessionRegistry {
     func ownsDisplay(pill: String, session: String) -> Bool {
         guard let owner = displayOwner(of: pill) else { return true }
         return owner.session == session
+    }
+
+    /// Live sessions behind `pill`, oldest first.
+    func lanes(of pill: String) -> [Lane] {
+        guard let p = pills[pill] else { return [] }
+        return p.order.compactMap { id in
+            guard let s = p.sessions[id] else { return nil }
+            return Lane(id: id, label: s.folder.isEmpty ? s.projectName : s.folder, cwd: s.cwd,
+                        hostApp: s.hostApp, bundleId: s.bundleId, isWorking: s.isWorking,
+                        steps: s.steps, turnStartedAt: s.turnStartedAt)
+        }
     }
 
     func liveCount(pill: String) -> Int { pills[pill]?.order.count ?? 0 }

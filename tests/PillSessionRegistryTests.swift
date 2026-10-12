@@ -195,6 +195,54 @@ enum PillSessionRegistryTests {
             check("B's folder once A ends", reg.displayOwner(of: claude)?.cwd == "/tmp/lokil")
         }
 
+        // ── each session keeps its own lines for the card's session row ─────────
+        print("\nLanes")
+        do {
+            var reg = PillSessionRegistry()
+            let start = Date(timeIntervalSince1970: 1_000_000)
+            reg.note(pill: claude, display: display("a", "coucou", "/a"), working: true, now: start)
+            reg.note(pill: claude, display: display("b", "lokil", "/b"), working: false, now: start)
+            reg.appendStep(pill: claude, session: "a", step: "Edit Invoice.swift")
+            reg.appendStep(pill: claude, session: "b", step: "Bash npm test")
+            reg.appendStep(pill: claude, session: "ghost", step: "never seen")
+
+            let lanes = reg.lanes(of: claude)
+            check("two lanes, oldest first", lanes.map(\.id) == ["a", "b"])
+            check("A keeps only its own line", lanes[0].steps == ["Edit Invoice.swift"])
+            check("B keeps only its own line", lanes[1].steps == ["Bash npm test"])
+            check("an unknown session adds no lane", lanes.count == 2)
+            check("labelled by project", lanes.map(\.label) == ["coucou", "lokil"])
+            check("A working, B not", lanes[0].isWorking && !lanes[1].isWorking)
+
+            let later = start.addingTimeInterval(60)
+            reg.note(pill: claude, display: display("b", "lokil", "/b"), working: true, now: later)
+            check("B's new turn is the latest",
+                  reg.lanes(of: claude).max { $0.turnStartedAt < $1.turnStartedAt }?.id == "b")
+            reg.note(pill: claude, display: display("a", "coucou", "/a"), working: true,
+                     now: later.addingTimeInterval(60))
+            check("a tool call mid-turn does not restart A's turn",
+                  reg.lanes(of: claude)[0].turnStartedAt == start)
+
+            for i in 0..<(PillSessionRegistry.maxSteps + 5) {
+                reg.appendStep(pill: claude, session: "a", step: "step \(i)")
+            }
+            let aSteps = reg.lanes(of: claude)[0].steps
+            check("a lane keeps the last \(PillSessionRegistry.maxSteps) lines",
+                  aSteps.count == PillSessionRegistry.maxSteps
+                  && aSteps.last == "step \(PillSessionRegistry.maxSteps + 4)")
+
+            _ = reg.endSession(pill: claude, session: "a", now: later)
+            check("an ended session leaves the row", reg.lanes(of: claude).map(\.id) == ["b"])
+
+            var ext = PillSessionRegistry()
+            ext.note(pill: "agent_gemini",
+                     display: PillSessionRegistry.Display(session: "g", projectName: "gemini",
+                                                          cwd: "", folder: "coucou"),
+                     working: true)
+            check("an agent's lane shows its folder, not the agent",
+                  ext.lanes(of: "agent_gemini").first?.label == "coucou")
+        }
+
         // ── finish ─────────────────────────────────────────────────────────────
         if failures == 0 {
             print("\nAll tests passed.")

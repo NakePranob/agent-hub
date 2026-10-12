@@ -49,8 +49,9 @@ struct OverviewView: View {
     @ObservedObject var state: AppState
     @State private var showingN8nDetail = false
     @State private var activeDiffId: Int? = nil
+    @State private var showingSessions = false
 
-    var agent: AgentTask? { state.focusTask }
+    var agent: AgentTask? { state.focusTask.map(state.cardTask) }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -63,36 +64,42 @@ struct OverviewView: View {
                     if agent.isIntegration {
                         IntegrationCardView(task: agent, showingDetail: $showingN8nDetail, onDiffTap: { diffIdx in
                             withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
-                        })
+                        }, onSessionList: openSessionList)
                     } else {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(hex: agent.color))
-                                    .frame(width: 7, height: 7)
-                                Text(agent.name)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Color(hex: "#F5F6F8"))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .layoutPriority(1)
-                                Text({ () -> String in
-                                    switch agent.source {
-                                    case .claudeCode: return "Claude Code"
-                                    case .agent:      return "Agent"
-                                    case .n8n:        return "n8n"
-                                    }
-                                }())
-                                    .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "#8E939C"))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                Spacer(minLength: 2)
-                                if agent.steps.count > 1 {
-                                    Text("\(min(agent.stepIndex + 1, agent.steps.count))/\(agent.steps.count)")
+                                if let lanes = state.sessionLanes[agent.id] {
+                                    SessionLaneRow(pillId: agent.id, lanes: lanes,
+                                                   shownId: state.shownLane(of: agent.id)?.id,
+                                                   onMore: openSessionList)
+                                } else {
+                                    Circle()
+                                        .fill(Color(hex: agent.color))
+                                        .frame(width: 7, height: 7)
+                                    Text(agent.name)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Color(hex: "#F5F6F8"))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .layoutPriority(1)
+                                    Text({ () -> String in
+                                        switch agent.source {
+                                        case .claudeCode: return "Claude Code"
+                                        case .agent:      return "Agent"
+                                        case .n8n:        return "n8n"
+                                        }
+                                    }())
                                         .font(.system(size: 11))
-                                        .foregroundColor(Color(hex: "#6B7079"))
-                                        .fixedSize()
+                                        .foregroundColor(Color(hex: "#8E939C"))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    Spacer(minLength: 2)
+                                    if agent.steps.count > 1 {
+                                        Text("\(min(agent.stepIndex + 1, agent.steps.count))/\(agent.steps.count)")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(Color(hex: "#6B7079"))
+                                            .fixedSize()
+                                    }
                                 }
                             }
                             .padding(.top, 6)
@@ -102,6 +109,7 @@ struct OverviewView: View {
                             TickerView(task: agent, onDiffTap: { diffIdx in
                                 withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
                             })
+                                .id(state.shownLane(of: agent.id)?.id)  // another session: start over
                                 .frame(height: 44)
                                 .padding(.top, 6)
                                 .padding(.leading, 108)
@@ -148,11 +156,22 @@ struct OverviewView: View {
                         .transition(.opacity)
                 }
 
+                // Session list — every session behind the pill, from the session row's "+N"
+                if showingSessions, let task = agent, let lanes = state.sessionLanes[task.id] {
+                    CardBackground(wash: nil)
+                    SessionListView(pillId: task.id, lanes: lanes,
+                                    shownId: state.shownLane(of: task.id)?.id,
+                                    onDismiss: {
+                                        withAnimation(.easeIn(duration: 0.16)) { showingSessions = false }
+                                    })
+                        .transition(.opacity)
+                }
+
                 // ↗ jump button — last in ZStack so it renders on top; hidden while any detail is open
                 #if !APPSTORE
-                let hideJumpButton = showingN8nDetail || state.showingPlanDetail || activeDiffId != nil
+                let hideJumpButton = showingN8nDetail || state.showingPlanDetail || activeDiffId != nil || showingSessions
                 #else
-                let hideJumpButton = showingN8nDetail || activeDiffId != nil
+                let hideJumpButton = showingN8nDetail || activeDiffId != nil || showingSessions
                 #endif
                 if !hideJumpButton {
                     Button(action: { openAgentTarget(agent) }) {
@@ -179,6 +198,7 @@ struct OverviewView: View {
         .onChange(of: state.focusId) { _, new in
             showingN8nDetail = false
             activeDiffId = nil
+            showingSessions = false
             #if !APPSTORE
             withAnimation(.easeIn(duration: 0.16)) { state.showingPlanDetail = false }
             #endif
@@ -190,6 +210,7 @@ struct OverviewView: View {
         }
         #endif
         .onChange(of: state.mode) { _, m in
+            if m != .expanded { showingSessions = false }
             #if !APPSTORE
             if m != .expanded { state.showingPlanDetail = false; activeDiffId = nil }
             #endif
@@ -206,6 +227,10 @@ struct OverviewView: View {
                 withAnimation(.easeIn(duration: 0.16)) { activeDiffId = last.id }
             }
         }
+    }
+
+    private func openSessionList() {
+        withAnimation(.easeIn(duration: 0.16)) { showingSessions = true }
     }
 
     private func openAgentTarget(_ task: AgentTask?) {
@@ -1778,6 +1803,7 @@ struct IntegrationCardView: View {
     let task: AgentTask
     @Binding var showingDetail: Bool
     var onDiffTap: ((Int) -> Void)? = nil
+    var onSessionList: () -> Void = {}
     @ObservedObject private var appState = AppState.shared
     @State private var githubDetailSection: GitHubDetailSection = .myPRs
     #if !APPSTORE
@@ -1890,7 +1916,8 @@ struct IntegrationCardView: View {
     private var agentSessionActive: Bool {
         guard let def = PillCatalog.definition(for: task.id) else { return false }
         guard def.category == .workspace || def.category == .agent else { return false }
-        return task.state != .idle || !task.steps.isEmpty
+        // Several sessions: keep the row up even on one that hasn't done anything yet.
+        return task.state != .idle || !task.steps.isEmpty || appState.sessionLanes[task.id] != nil
     }
 
     // n8n with a finished execution: show result row instead of "Open n8n" button
@@ -2120,24 +2147,30 @@ struct IntegrationCardView: View {
             // Active session view — reuse overview layout
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(hex: task.color))
-                        .frame(width: 7, height: 7)
-                    Text(task.name)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "#F5F6F8"))
-                        .lineLimit(1).truncationMode(.tail)
-                        .layoutPriority(1)
-                    Text(PillCatalog.definition(for: task.id)?.sessionSubtitle ?? "Agent")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "#8E939C"))
-                        .lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 2)
-                    if task.steps.count > 1 {
-                        Text("\(min(task.stepIndex + 1, task.steps.count))/\(task.steps.count)")
+                    if let lanes = appState.sessionLanes[task.id] {
+                        SessionLaneRow(pillId: task.id, lanes: lanes,
+                                       shownId: appState.shownLane(of: task.id)?.id,
+                                       onMore: onSessionList)
+                    } else {
+                        Circle()
+                            .fill(Color(hex: task.color))
+                            .frame(width: 7, height: 7)
+                        Text(task.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(hex: "#F5F6F8"))
+                            .lineLimit(1).truncationMode(.tail)
+                            .layoutPriority(1)
+                        Text(PillCatalog.definition(for: task.id)?.sessionSubtitle ?? "Agent")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "#6B7079"))
-                            .fixedSize()
+                            .foregroundColor(Color(hex: "#8E939C"))
+                            .lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 2)
+                        if task.steps.count > 1 {
+                            Text("\(min(task.stepIndex + 1, task.steps.count))/\(task.steps.count)")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "#6B7079"))
+                                .fixedSize()
+                        }
                     }
                 }
                 .padding(.top, 6)
@@ -2145,6 +2178,7 @@ struct IntegrationCardView: View {
                 .padding(.trailing, 36)
 
                 TickerView(task: task, onDiffTap: onDiffTap)
+                    .id(appState.shownLane(of: task.id)?.id)  // another session: start over
                     .frame(height: 44)
                     .padding(.top, 6)
                     .padding(.leading, 108)
@@ -3721,6 +3755,153 @@ struct N8nDetailView: View {
 }
 
 // MARK: - Ticker (overview scrolling task steps) V2
+
+// MARK: - Session row
+
+/// The sessions sharing one pill, side by side in the card's title row: each one's
+/// folder, with a dot for what it is doing. A click shows that session in the card.
+/// Past two sessions the row keeps two chips and a "+N" that opens the full list.
+struct SessionLaneRow: View {
+    let pillId: String
+    let lanes: [PillSessionRegistry.Lane]
+    let shownId: String?
+    let onMore: () -> Void
+
+    var body: some View {
+        // In order of arrival, so chips never swap under the pointer; the shown session
+        // always holds the second chip when it is not the first.
+        let shownIdx = lanes.firstIndex { $0.id == shownId } ?? 0
+        let visible = lanes.count > 2 ? [0, max(1, shownIdx)] : Array(lanes.indices)
+        let hidden = lanes.indices.filter { !visible.contains($0) }.map { lanes[$0] }
+        HStack(spacing: 4) {
+            ForEach(visible, id: \.self) { i in
+                let lane = lanes[i]
+                let isShown = lane.id == shownId
+                Button {
+                    AppState.shared.pickedLane[pillId] = lane.id
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(Self.dot(lane)).frame(width: 5, height: 5)
+                        // Middle: "coucou-web" and "coucou-api" stay apart as "cou…web", "cou…api".
+                        Text(Self.label(i, in: lanes))
+                            .font(.system(size: 11, weight: isShown ? .semibold : .regular))
+                            .foregroundColor(Color(hex: isShown ? "#F5F6F8" : "#8E939C"))
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                    .chip(selected: isShown)
+                }
+                .buttonStyle(.plain)
+                .help(lane.cwd)
+            }
+            if !hidden.isEmpty {
+                Button(action: onMore) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Self.dot(waiting: hidden.contains(where: \.isWaiting),
+                                               working: hidden.contains(where: \.isWorking)))
+                            .frame(width: 5, height: 5)
+                        Text("+\(hidden.count)")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "#8E939C"))
+                            .fixedSize()
+                    }
+                    .chip(selected: false)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Two sessions in one folder read "coucou" and "coucou 2".
+    static func label(_ i: Int, in lanes: [PillSessionRegistry.Lane]) -> String {
+        let name = lanes[i].label
+        let before = lanes[..<i].filter { $0.label == name }.count
+        return before == 0 ? name : "\(name) \(before + 1)"
+    }
+
+    static func dot(_ lane: PillSessionRegistry.Lane) -> Color {
+        dot(waiting: lane.isWaiting, working: lane.isWorking)
+    }
+
+    /// Waiting for you wins over working, working over idle.
+    static func dot(waiting: Bool, working: Bool) -> Color {
+        if waiting { return Color(hex: RobotMood.needsYou.glowHex) }
+        if working { return Color(hex: RobotMood.working.glowHex) }
+        return Color(hex: "#6B7079")
+    }
+}
+
+private extension View {
+    func chip(selected: Bool) -> some View {
+        self.padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.white.opacity(selected ? 0.10 : 0.04)))
+            .contentShape(Capsule())
+    }
+}
+
+/// Every session sharing the pill, one row each: what it is doing and its latest step.
+/// Opened by the session row's "+N"; a click shows that session in the card.
+struct SessionListView: View {
+    let pillId: String
+    let lanes: [PillSessionRegistry.Lane]
+    let shownId: String?
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onDismiss) {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 8, weight: .medium))
+                    Text("Sessions")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(lanes.count)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#6B7079"))
+                }
+                .foregroundColor(Color(hex: "#F5F6F8"))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 6)
+            .padding(.bottom, 3)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(lanes.enumerated()), id: \.element.id) { i, lane in
+                        Button {
+                            AppState.shared.pickedLane[pillId] = lane.id
+                            onDismiss()
+                        } label: {
+                            HStack(spacing: 5) {
+                                Circle().fill(SessionLaneRow.dot(lane)).frame(width: 5, height: 5)
+                                Text(SessionLaneRow.label(i, in: lanes))
+                                    .font(.system(size: 11, weight: lane.id == shownId ? .semibold : .regular))
+                                    .foregroundColor(Color(hex: "#F5F6F8"))
+                                    .lineLimit(1).truncationMode(.middle)
+                                    .layoutPriority(1)
+                                Text(lane.steps.last(where: { !$0.isDiffStep }) ?? "")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(Color(hex: "#8E939C"))
+                                    .lineLimit(1).truncationMode(.tail)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 20)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(lane.cwd)
+                    }
+                }
+            }
+        }
+        .padding(.leading, 108)
+        .padding(.trailing, 10)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onExitCommand { onDismiss() }
+    }
+}
 
 struct TickerView: View {
     let task: AgentTask?

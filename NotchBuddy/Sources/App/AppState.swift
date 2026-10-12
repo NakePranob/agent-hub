@@ -388,6 +388,39 @@ final class AppState: ObservableObject {
         didSet { QuestionLayout.height = pendingQuestion?.estimatedIslandHeight }
     }
 
+    /// Sessions sharing a pill (pill id → live sessions, oldest first), set by HookServer.
+    /// Only pills with two or more sessions are here: the card then shows them as a row,
+    /// and one session alone leaves the card exactly as it was.
+    @Published var sessionLanes: [String: [PillSessionRegistry.Lane]] = [:]
+    /// The session the user clicked in a pill's session row (pill id → session id).
+    @Published var pickedLane: [String: String] = [:]
+
+    /// The session a pill's card shows: the one clicked in its session row, else the one
+    /// prompted last. Nil while the pill has a single session.
+    func shownLane(of pillId: String) -> PillSessionRegistry.Lane? {
+        guard let lanes = sessionLanes[pillId] else { return nil }
+        if let picked = pickedLane[pillId], let lane = lanes.first(where: { $0.id == picked }) {
+            return lane
+        }
+        return lanes.max { $0.turnStartedAt < $1.turnStartedAt }
+    }
+
+    /// `task` as its card shows it: with several sessions behind the pill, the shown
+    /// session's project, steps and terminal. The pill itself keeps the merged log (the
+    /// iPhone, the Live Activity and the voice read that), its state and its badge.
+    func cardTask(_ task: AgentTask) -> AgentTask {
+        guard let lane = shownLane(of: task.id) else { return task }
+        var shown = task
+        shown.name = lane.label
+        shown.steps = lane.steps
+        shown.stepIndex = max(0, lane.steps.count - 1)
+        shown.state = lane.isWaiting ? .approval : lane.isWorking ? .working : .idle
+        if !lane.cwd.isEmpty { shown.sessionCwd = lane.cwd }
+        if !lane.bundleId.isEmpty { shown.sessionBundleId = lane.bundleId }
+        if task.id == "integration_claude" { shown.hostApp = lane.hostApp }
+        return shown
+    }
+
     // Per-pill flat list of FileDiffs, in order of reception.
     // Not @Published — steps[] changes already trigger redraws.
     var sessionDiffs: [String: [FileDiff]] = [:]

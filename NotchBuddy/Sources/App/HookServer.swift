@@ -137,6 +137,7 @@ final class HookServer: @unchecked Sendable {
             state.updateTask(id: entry.pillId, state: .working)
             clearPillBadge(id: entry.pillId)
         }
+        publishLanes(entry.pillId)
         if approvals.head != nil {
             showApprovalHead()
             return
@@ -179,6 +180,7 @@ final class HookServer: @unchecked Sendable {
         state.isPinned = false
         state.updateTask(id: pillId, state: .working)
         clearPillBadge(id: pillId)
+        publishLanes(pillId)
         if let prev = focusBeforeQuestion {
             focusBeforeQuestion = nil
             if state.focusId == pillId, state.tasks.contains(where: { $0.id == prev }) {
@@ -236,6 +238,7 @@ final class HookServer: @unchecked Sendable {
         let source = questionFDSource
         questionFDSource = nil
         AppState.shared.pendingQuestion = nil
+        publishLanes(questionPillId)
         Task.detached { [weak self] in
             self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
             DispatchQueue.main.async { source?.cancel() }
@@ -476,7 +479,8 @@ final class HookServer: @unchecked Sendable {
             session: sessionId,
             projectName: isExternalAgent ? (validAgent ?? projectName) : projectName,
             cwd: isExternalAgent ? "" : cwd,
-            hostApp: hostApp, bundleId: bundleId)
+            hostApp: hostApp, bundleId: bundleId, folder: projectName)
+        defer { publishLanes(agentId) }
         // For sessions that carry no id, derive a unique key from pill + cwd so that
         // concurrent anonymous sessions are tracked independently in RecapStore.
         let recapSessionId = (sessionId == "unknown" || sessionId.isEmpty)
@@ -522,7 +526,7 @@ final class HookServer: @unchecked Sendable {
             if agentId == "agent_hermes", let platform = payload["platform"] as? String,
                !platform.isEmpty, platform != "cli" {
                 let capitalized = platform.prefix(1).uppercased() + platform.dropFirst()
-                appendStep(id: agentId, step: String(capitalized))
+                appendStep(id: agentId, session: sessionId, step: String(capitalized))
             }
 
         case "UserPromptSubmit":
@@ -532,7 +536,7 @@ final class HookServer: @unchecked Sendable {
             if let idx = state.tasks.firstIndex(where: { $0.id == agentId }) { state.tasks[idx].finalLine = nil }
             state.updateTask(id: agentId, state: .thinking)
             if let prompt = payload["prompt"] as? String, !prompt.isEmpty {
-                appendStep(id: agentId, step: String(prompt.prefix(60)))
+                appendStep(id: agentId, session: sessionId, step: String(prompt.prefix(60)))
             }
             RecapStore.shared.userPromptSubmit(sessionId: recapSessionId, pillId: agentId, project: projectName)
             NotificationCenter.default.post(name: .checkMondayRecap, object: nil)
@@ -551,7 +555,7 @@ final class HookServer: @unchecked Sendable {
             state.updateTask(id: agentId, state: .working)
             let input = payload["tool_input"] as? [String: Any] ?? [:]
             let step = localizedStep(tool: tool, input: input)
-            appendStep(id: agentId, step: step)
+            appendStep(id: agentId, session: sessionId, step: step)
             nbLog("PreToolUse \(tool)")
 
         case "PostToolUse":
@@ -563,14 +567,14 @@ final class HookServer: @unchecked Sendable {
             if let diff = buildFileDiff(tool: diffTool, input: diffInput, pillId: agentId) {
                 let idx = state.appendSessionDiff(diff, for: agentId)
                 let step = String.makeDiffStep(filename: diff.name, added: diff.added, removed: diff.removed, diffId: idx)
-                appendStep(id: agentId, step: step)
+                appendStep(id: agentId, session: sessionId, step: step)
                 RecapStore.shared.recordFileDiff(sessionId: recapSessionId, path: diff.name, added: diff.added, removed: diff.removed)
             }
 
         case "PostToolUseFailure":
             sessions.note(pill: agentId, display: display, working: true)
             state.updateTask(id: agentId, state: .working)
-            appendStep(id: agentId, step: "⚠ failed")
+            appendStep(id: agentId, session: sessionId, step: "⚠ failed")
 
         case "Notification":
             sessions.note(pill: agentId, display: display, working: false)
@@ -581,7 +585,7 @@ final class HookServer: @unchecked Sendable {
                 SoundEngine.shared.play("rate")
             } else if message.hasSuffix("?") {
                 state.updateTask(id: agentId, state: .question)
-                appendStep(id: agentId, step: message)
+                appendStep(id: agentId, session: sessionId, step: message)
             }
 
         case "Stop":
@@ -590,7 +594,7 @@ final class HookServer: @unchecked Sendable {
                 ?? (payload["message"] as? String) ?? ""
             let finalText = DiffEngine.toOneLine(rawFinal)
             // The step log is shared, so the conclusion is worth showing either way.
-            if !finalText.isEmpty { appendStep(id: agentId, step: finalText) }
+            if !finalText.isEmpty { appendStep(id: agentId, session: sessionId, step: finalText) }
             RecapStore.shared.stop(sessionId: recapSessionId)
             // Another session is still mid-turn behind this pill: the finished state, the
             // sound and the idle reset below would land on its work. Its own Stop comes later.
@@ -653,10 +657,10 @@ final class HookServer: @unchecked Sendable {
             RecapStore.shared.sessionEnd(sessionId: recapSessionId)
 
         case "SubagentStart":
-            appendStep(id: agentId, step: "+ subagent")
+            appendStep(id: agentId, session: sessionId, step: "+ subagent")
 
         case "SubagentStop":
-            appendStep(id: agentId, step: "• subagent done")
+            appendStep(id: agentId, session: sessionId, step: "• subagent done")
 
         default:
             break
@@ -854,9 +858,10 @@ final class HookServer: @unchecked Sendable {
         upsertTask(pill: pillId,
                    display: PillSessionRegistry.Display(session: sessionId, projectName: projectName,
                                                         cwd: cwd, hostApp: terminalHost?.bundleId,
-                                                        bundleId: bundleId),
+                                                        bundleId: bundleId, folder: projectName),
                    working: true, externalAgent: nil)
         state.updateTask(id: pillId, state: .approval)
+        publishLanes(pillId)
         SoundEngine.shared.play("approval")
 
         // Monitor fd: if the agent closes the connection (answered in its own UI), drop the
@@ -988,9 +993,10 @@ final class HookServer: @unchecked Sendable {
         upsertTask(pill: pillId,
                    display: PillSessionRegistry.Display(session: sessionId, projectName: projectName,
                                                         cwd: cwd, hostApp: terminalHost?.bundleId,
-                                                        bundleId: bundleId),
+                                                        bundleId: bundleId, folder: projectName),
                    working: true, externalAgent: nil)
         state.updateTask(id: pillId, state: .question)
+        publishLanes(pillId)
         state.pendingQuestion = parsed
         state.isPinned = true
         SoundEngine.shared.play("approval")
@@ -1110,13 +1116,31 @@ final class HookServer: @unchecked Sendable {
         state.tasks[idx].pillBadge = nil
     }
 
+    /// Adds a line to the pill's merged log and to its session's own log (the card shows
+    /// the latter when several sessions share the pill).
     @MainActor
-    private func appendStep(id: String, step: String) {
+    private func appendStep(id: String, session: String, step: String) {
+        sessions.appendStep(pill: id, session: session, step: step)
         let state = AppState.shared
         guard let idx = state.tasks.firstIndex(where: { $0.id == id }) else { return }
         state.tasks[idx].steps.append(step)
         if state.tasks[idx].steps.count > 20 { state.tasks[idx].steps.removeFirst() }
         state.tasks[idx].stepIndex = state.tasks[idx].steps.count - 1
+    }
+
+    /// Hands the card the sessions behind `pill`, when there are two or more. Called after
+    /// anything that changes a session's steps, its turn, or what it waits on.
+    @MainActor
+    private func publishLanes(_ pill: String) {
+        var lanes = sessions.lanes(of: pill)
+        for i in lanes.indices {
+            let id = lanes[i].id
+            lanes[i].isWaiting = approvals.entries.contains { $0.pillId == pill && $0.sessionId == id }
+                || (pendingQuestionFD >= 0 && questionPillId == pill && questionSessionId == id)
+        }
+        let state = AppState.shared
+        let published: [PillSessionRegistry.Lane]? = lanes.count > 1 ? lanes : nil
+        if state.sessionLanes[pill] != published { state.sessionLanes[pill] = published }
     }
 
     // MARK: - Project name alias mapping
