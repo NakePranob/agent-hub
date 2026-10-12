@@ -327,7 +327,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Active integration pills (main workspace pill excluded). Max 4.
+    // Active integration pills (main workspace pill excluded).
     @Published var activeIntegrations: Set<String> = ["integration_resend", "integration_n8n", "integration_vercel", "integration_github"] {
         didSet {
             if let data = try? JSONEncoder().encode(Array(activeIntegrations)) {
@@ -708,7 +708,6 @@ final class AppState: ObservableObject {
 
     /// Toggle a catalog pill on/off.
     /// mainPillId: never toggleable (change via the Main picker first).
-    /// Max 4 non-main pills active at once.
     /// Switch the always-on workspace pill. Mirrors what the Settings Picker does.
     func setMainPill(_ id: String) {
         guard PillCatalog.available.contains(where: {
@@ -728,7 +727,6 @@ final class AppState: ObservableObject {
             tasks.removeAll { $0.id == id }
             if focusId == id { focusId = mainPillId }
         } else {
-            guard activeIntegrations.count < 4 else { return }
             activeIntegrations.insert(id)
             if let def = PillCatalog.available.first(where: { $0.id == id }),
                !tasks.contains(where: { $0.id == id }) {

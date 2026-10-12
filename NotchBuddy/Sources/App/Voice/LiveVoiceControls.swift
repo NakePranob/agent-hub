@@ -80,7 +80,6 @@ final class LiveMusicControl: MusicControlling, @unchecked Sendable {
 final class LivePillControl: PillControlling {
     func activeIds()  -> Set<String> { AppState.shared.activeIntegrations }
     func mainPillId() -> String      { AppState.shared.mainPillId }
-    func activeCount() -> Int        { AppState.shared.activeIntegrations.count }
     func toggleIntegration(_ id: String) { AppState.shared.toggleIntegration(id) }
     func setMainPill(_ id: String)       { AppState.shared.setMainPill(id) }
 }

@@ -144,7 +144,7 @@ final class ClaudeVoiceBrain {
     private static let tools: [[String: Any]] = [
         [
             "name": "pills",
-            "description": "Add, remove, set as main or list the pills shown in the notch. At most 4 pills besides the main one: remove one first if needed.",
+            "description": "Add, remove, set as main or list the pills shown in the notch.",
             "input_schema": [
                 "type": "object",
                 "properties": [
@@ -249,12 +249,8 @@ final class ClaudeVoiceBrain {
                 default:         lines.append("unknown action \(action)"); continue
                 }
                 let r = await perform(intent)
-                if case .question = r.outcome {
-                    lines.append("\(name): the notch is full (4 pills). Ask which pill to remove, then remove it and add \(name).")
-                } else {
-                    if r.outcome == .success { acted = true }
-                    lines.append("\(name): \(r.message)")
-                }
+                if r.outcome == .success { acted = true }
+                lines.append("\(name): \(r.message)")
             }
             return (lines.isEmpty ? "nothing done" : lines.joined(separator: "\n"), acted)
 

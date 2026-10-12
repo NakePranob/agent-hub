@@ -686,7 +686,7 @@ final class HookServer: @unchecked Sendable {
 
     /// Creates a dynamic pill for a third-party agent on first event, then no-ops.
     /// ID format: "agent_<name>" — never collides with "integration_*" pills.
-    /// Inserted right after integration_claude so it appears in the visible prefix(4).
+    /// Inserted right after integration_claude so it takes one of the first visible slots.
     @MainActor
     private func upsertExternalAgent(id: String, name: String) {
         let state = AppState.shared

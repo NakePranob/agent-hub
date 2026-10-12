@@ -100,7 +100,8 @@ Centre vertical du bonhomme : 36 + (hauteur − 46) / 2, sauf `result` (y = 86).
 Quand une étape du fil est une modification de fichier (préfixe interne `\u{E001}`), elle s'affiche avec le nom du fichier et le bilan `+N −M` en couleur. Un clic sur la ligne courante ou la ligne précédente ouvre la carte diff (voir DiffCardView) dans la carte gauche de la vue principale, en remplacement du fil — que la pastille soit intégrée (integration_claude, agent_cursor…) ou non. Échap ou le bouton ← de l'en-tête ferme la carte. En fin de tâche (Stop), la ligne courante du fil passe en texte statique (couleur `#C9CDD4`, sans brillance) tant que la tâche n'est pas relancée ; elle est construite à partir du dernier message de l'assistant (champ `last_assistant_message` de l'événement Stop, nettoyé du Markdown par `DiffEngine.toOneLine` — premier paragraphe utile uniquement).
 
 ### Pastilles (overview)
-- 132 × 34, rayon 17, fond couleur de l'agent à 13 %, bord à 32 %, mini-bonhomme Ø 24 centré à 17 pt du bord gauche, libellé 12 pt couleur de l'agent éclaircie de 25 %. Deux colonnes, écart 8, centrées verticalement dans la carte droite (qui commence à x = 342).
+- Carte droite de 36 pt (une capsule) : le logo des autres pastilles (`PillLogo` 22 pt, anneau d'état, badge), dans l'ordre du catalogue, écart 8, nom au survol. Trois tiennent ; au-delà, la dernière place devient « +N », avec un point de la couleur la plus urgente des pastilles cachées (attend, erreur, travaille).
+- « +N » ouvre par-dessus la carte gauche la liste « Apps » : toutes les autres pastilles, en pastilles nommées (3 colonnes, défilement au-delà de 2 rangées). Un clic met la pastille en focus et ferme la liste, comme ‹, Échap, « +N » ou la fermeture de l'île.
 
 ### Catalogue de pastilles
 Toutes les pastilles déclarées sont définies dans `PillCatalog.all` (source de vérité unique). Quatre catégories :
@@ -115,9 +116,9 @@ Toutes les pastilles déclarées sont définies dans `PillCatalog.all` (source d
 Couleurs : Cursor `#C0C4CC`, Codex `#2DD4BF`, Gemini CLI `#8AB4F8`, Antigravity `#E879F9`, Copilot CLI `#818CF8`, Muse Code `#38BDF8`, OpenCode `#4ADE80`, Amp `#F59E0B`, Hermes `#C084FC`, pastilles IA = `ChatProvider.accentHex` (Ollama `#FACC15`, LM Studio `#A3E635`).
 
 Règles :
-- **`mainPillId`** (défaut `integration_claude`) est la pastille workspace toujours chargée. Elle ne compte pas dans les 4 places. Modifiable via le sélecteur Main dans Settings.
+- **`mainPillId`** (défaut `integration_claude`) est la pastille workspace toujours chargée. Modifiable via le sélecteur Main dans Settings.
 - Quand `mainPillId != "integration_claude"`, la pastille VS Code est chargée seulement si une session VS Code est active (transient) ou si elle est cochée dans `activeIntegrations`.
-- Max 4 pastilles autres que `mainPillId` actives à la fois (`activeIntegrations`, persisté).
+- Pas de limite au nombre de pastilles actives en plus de `mainPillId` (`activeIntegrations`, persisté) : la carte de droite de l'overview en montre trois, au-delà « +N » ouvre la liste complète.
 - `removeTask` sur `mainPillId` ou une pastille déclarée + active → reset à `.idle` + `pillBadge = nil` + nom du catalogue (pas de suppression). Sinon → suppression normale.
 - `sortTasksByCatalog` : pastilles du catalogue dans l'ordre du catalogue ; pastilles hors catalogue juste après `integration_claude`.
 - Pastilles `githubOnly` : exclues des builds App Store (`#if APPSTORE`).
