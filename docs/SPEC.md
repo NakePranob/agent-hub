@@ -71,7 +71,7 @@ rouge `rgba(244,80,94,.55)`, vert `rgba(52,211,153,.5)`, rose `rgba(244,114,182,
 
 | Vue | Hauteur | Bonhomme (x, Ø) | Contenu | Capture |
 |---|---|---|---|---|
-| `overview` | 196 | 64, 70 | carte gauche 322 de large : ligne agent + défilé de tâches ; carte droite : pastilles | 03 |
+| `overview` | 196 | 64, 70 | carte gauche (tout l'espace restant) : ligne session + roue des étapes ; carte droite de 36 : logos des pastilles | 03 |
 | `empty` | 150 | 70, 62 | « Rien ne tourne pour l'instant. » + bouton « Demander à Claude » | 16 |
 | `approval` | 206 | 62, 56 | agent + « Claude Code veut lancer une commande », bloc code, Refuser (N), Toujours autoriser, Autoriser (Y) | 04 |
 | `question` | 196 | 62, 56 | agent + question (1/N) + options en boutons (single-select ou multi-select) + « Reply in terminal » ; bouton Send/Next pour multi-select ou multi-questions ; « Other… » → saisie libre | 05 |
@@ -89,15 +89,17 @@ rouge `rgba(244,80,94,.55)`, vert `rgba(52,211,153,.5)`, rose `rgba(244,114,182,
 
 Centre vertical du bonhomme : 36 + (hauteur − 46) / 2, sauf `result` (y = 86).
 
-### Défilé de tâches (overview)
-- Position x = 112 dans la carte, fenêtre de 96 pt avec masque dégradé haut/bas, 4 lignes de 30 pt (précédente, courante, suivante, suivante+1).
-- Ligne courante : 14 pt medium, texte scintillant (dégradé gris → blanc → gris qui balaie en 2,2 s). Autres : 13 pt `#5F646D`, icône 14 pt.
-- Toutes les 2,8 s, si la tâche en focus travaille : tout monte de 30 pt en 450 ms `cubic-bezier(.3,.9,.3,1)`.
-- Dans l'app réelle, les lignes = les dernières actions de la session (outil + cible : « Edit Invoice.swift », « Bash npm test ») ou les nœuds n8n.
+### Carte de session (overview)
+- **Ligne du haut** : point + nom de la session (ou la rangée des sessions, voir `SessionLaneRow`), puis **la dernière demande** de l'utilisateur entre guillemets (11 pt `#8E939C`, tronquée, complète au survol), à droite **le temps du tour** (`0:42`, qui compte tant que l'agent travaille, puis « Done · 2:14 »). Sans demande encore : le sous-titre de session de la pastille.
+- **Roue des étapes** (64 pt, masque dégradé haut/bas) : l'étape précédente au-dessus (réduite à 84 %, atténuée), l'étape en cours au milieu, le **résumé du tour** en dessous. Chaque nouvelle étape fait monter la roue (ressort 0,42 s) ; la ligne du milieu ne bouge pas. Seules les étapes du tour en cours (depuis la demande) y passent.
+- Chaque étape a son **icône selon son type**, lu dans le verbe que le serveur de hooks écrit (`StepKind.of`) : chercher, lire, web en bleu `#62A8FF` ; modifier en vert `#4FF0A8` ; lancer en blanc `#E2E8F0` ; tests `#2DD4BF` ; sous-agent et plan en violet `#C084FC` ; échec en rouge `#FF5A6A`. Au milieu, l'icône est dans un carré de 20 pt teinté à 16 % ; le verbe (13 pt semibold, scintillant pendant le travail) puis la cible en monospace 12 pt.
+- « Thinking… » (étincelle violette) entre la demande et le premier outil. En fin de tour, la ligne du milieu devient la réponse derrière une coche verte, et la carte s'éclaire en vert par le bas tant que la pastille est en `finished`.
+- **Résumé** : fichiers modifiés et lignes `+N −M`, puis une icône ×N par type d'étape du tour (`AgentTurn`, tenu par `HookServer` pour la pastille et pour chaque session).
+- Le **logo de l'app** où tourne la session (VS Code, Terminal…) est posé à l'épaule du robot, avec l'anneau de son état.
 
 ### Diff en direct
 
-Quand une étape du fil est une modification de fichier (préfixe interne `\u{E001}`), elle s'affiche avec le nom du fichier et le bilan `+N −M` en couleur. Un clic sur la ligne courante ou la ligne précédente ouvre la carte diff (voir DiffCardView) dans la carte gauche de la vue principale, en remplacement du fil — que la pastille soit intégrée (integration_claude, agent_cursor…) ou non. Échap ou le bouton ← de l'en-tête ferme la carte. En fin de tâche (Stop), la ligne courante du fil passe en texte statique (couleur `#C9CDD4`, sans brillance) tant que la tâche n'est pas relancée ; elle est construite à partir du dernier message de l'assistant (champ `last_assistant_message` de l'événement Stop, nettoyé du Markdown par `DiffEngine.toOneLine` — premier paragraphe utile uniquement).
+Quand une étape du fil est une modification de fichier (préfixe interne `\u{E001}`), elle s'affiche avec le nom du fichier et le bilan `+N −M` en couleur. Un clic sur la ligne du milieu ou celle du dessus ouvre la carte diff (voir DiffCardView) dans la carte gauche de la vue principale, en remplacement du fil — que la pastille soit intégrée (integration_claude, agent_cursor…) ou non. Échap ou le bouton ← de l'en-tête ferme la carte. En fin de tâche (Stop), la ligne du milieu devient la réponse, en texte statique, tant que la tâche n'est pas relancée ; elle est construite à partir du dernier message de l'assistant (champ `last_assistant_message` de l'événement Stop, nettoyé du Markdown par `DiffEngine.toOneLine` — premier paragraphe utile uniquement).
 
 ### Pastilles (overview)
 - Carte droite de 36 pt (une capsule) : le logo des autres pastilles (`PillLogo` 22 pt, anneau d'état, badge), dans l'ordre du catalogue, écart 8, nom au survol. Trois tiennent ; au-delà, la dernière place devient « +N », avec un point de la couleur la plus urgente des pastilles cachées (attend, erreur, travaille).

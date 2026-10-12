@@ -369,6 +369,16 @@ struct BotPlacement: View {
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: canvasSize)
                     .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             }
+
+            // The app the focused session runs in, at the robot's shoulder, ringed in its state.
+            if state.mode == .expanded, state.view == .overview, !state.mochiOnDesktop, !state.isDraggingBot,
+               let task = state.focusTask.map(state.cardTask), Self.isSession(task) {
+                PillLogo(task: task, size: 16)
+                    .padding(2)
+                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color(hex: "#161719")))
+                    .position(x: cx - diameter * 0.5, y: cy - diameter * 0.42)
+                    .transition(.opacity)
+            }
         }
         // Branch switch (uploading ↔ normal) animates with a fast spring: uploading dot
         // scales out at bar-end while normal bot scales in at choose position.
@@ -378,6 +388,11 @@ struct BotPlacement: View {
         .allowsHitTesting(false)
     }
 
+    /// A coding agent's pill, not a service's.
+    private static func isSession(_ task: AgentTask) -> Bool {
+        guard let def = PillCatalog.definition(for: task.id) else { return !task.isIntegration }
+        return def.category == .workspace || def.category == .agent
+    }
 }
 
 func botPosition(mode: IslandMode, view: IslandView, islandW: CGFloat, islandH: CGFloat, uploadProgress: Double, hasNotch: Bool = true,

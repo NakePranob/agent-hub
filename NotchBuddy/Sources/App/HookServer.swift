@@ -535,8 +535,13 @@ final class HookServer: @unchecked Sendable {
                        externalAgent: isExternalAgent ? validAgent : nil)
             if let idx = state.tasks.firstIndex(where: { $0.id == agentId }) { state.tasks[idx].finalLine = nil }
             state.updateTask(id: agentId, state: .thinking)
-            if let prompt = payload["prompt"] as? String, !prompt.isEmpty {
+            let prompt = payload["prompt"] as? String ?? ""
+            if !prompt.isEmpty {
                 appendStep(id: agentId, session: sessionId, step: String(prompt.prefix(60)))
+            }
+            // After the prompt's own line, so the turn counts only the steps that answer it.
+            updateTurn(id: agentId, session: sessionId) {
+                $0 = AgentTurn(prompt: DiffEngine.toOneLine(prompt), startedAt: Date())
             }
             RecapStore.shared.userPromptSubmit(sessionId: recapSessionId, pillId: agentId, project: projectName)
             NotificationCenter.default.post(name: .checkMondayRecap, object: nil)
@@ -556,6 +561,10 @@ final class HookServer: @unchecked Sendable {
             let input = payload["tool_input"] as? [String: Any] ?? [:]
             let step = localizedStep(tool: tool, input: input)
             appendStep(id: agentId, session: sessionId, step: step)
+            updateTurn(id: agentId, session: sessionId) { turn in
+                turn?.endedAt = nil   // a turn picked up again without a prompt
+                if let kind = StepKind.of(step) { turn?.tally[kind, default: 0] += 1 }
+            }
             nbLog("PreToolUse \(tool)")
 
         case "PostToolUse":
@@ -568,13 +577,19 @@ final class HookServer: @unchecked Sendable {
                 let idx = state.appendSessionDiff(diff, for: agentId)
                 let step = String.makeDiffStep(filename: diff.name, added: diff.added, removed: diff.removed, diffId: idx)
                 appendStep(id: agentId, session: sessionId, step: step)
+                updateTurn(id: agentId, session: sessionId) { turn in
+                    turn?.files.insert(diff.name)
+                    turn?.added += diff.added
+                    turn?.removed += diff.removed
+                }
                 RecapStore.shared.recordFileDiff(sessionId: recapSessionId, path: diff.name, added: diff.added, removed: diff.removed)
             }
 
         case "PostToolUseFailure":
             sessions.note(pill: agentId, display: display, working: true)
             state.updateTask(id: agentId, state: .working)
-            appendStep(id: agentId, session: sessionId, step: "⚠ failed")
+            appendStep(id: agentId, session: sessionId, step: StepKind.failedStep)
+            updateTurn(id: agentId, session: sessionId) { $0?.tally[.fail, default: 0] += 1 }
 
         case "Notification":
             sessions.note(pill: agentId, display: display, working: false)
@@ -595,6 +610,7 @@ final class HookServer: @unchecked Sendable {
             let finalText = DiffEngine.toOneLine(rawFinal)
             // The step log is shared, so the conclusion is worth showing either way.
             if !finalText.isEmpty { appendStep(id: agentId, session: sessionId, step: finalText) }
+            updateTurn(id: agentId, session: sessionId) { $0?.endedAt = Date() }
             RecapStore.shared.stop(sessionId: recapSessionId)
             // Another session is still mid-turn behind this pill: the finished state, the
             // sound and the idle reset below would land on its work. Its own Stop comes later.
@@ -1126,6 +1142,16 @@ final class HookServer: @unchecked Sendable {
         state.tasks[idx].steps.append(step)
         if state.tasks[idx].steps.count > 20 { state.tasks[idx].steps.removeFirst() }
         state.tasks[idx].stepIndex = state.tasks[idx].steps.count - 1
+        state.tasks[idx].turn?.stepCount += 1
+    }
+
+    /// Changes the turn of one session and of its pill, like `appendStep` does the steps.
+    @MainActor
+    private func updateTurn(id: String, session: String, _ change: (inout AgentTurn?) -> Void) {
+        sessions.updateTurn(pill: id, session: session, change)
+        let state = AppState.shared
+        guard let idx = state.tasks.firstIndex(where: { $0.id == id }) else { return }
+        change(&state.tasks[idx].turn)
     }
 
     /// Hands the card the sessions behind `pill`, when there are two or more. Called after
@@ -1157,26 +1183,7 @@ final class HookServer: @unchecked Sendable {
     // MARK: - Localized step labels
 
     private func localizedStep(tool: String, input: [String: Any]) -> String {
-        let labels: [String: String] = [
-            "Bash":         String(localized: "step.runs",       defaultValue: "Runs"),
-            "Read":         String(localized: "step.reads",      defaultValue: "Reads"),
-            "Write":        String(localized: "step.writes",     defaultValue: "Writes"),
-            "Edit":         String(localized: "step.edits",      defaultValue: "Edits"),
-            "Glob":         String(localized: "step.searches",   defaultValue: "Searches"),
-            "Grep":         String(localized: "step.searches",   defaultValue: "Searches"),
-            "WebSearch":    String(localized: "step.web-search", defaultValue: "Searches the web"),
-            "WebFetch":     String(localized: "step.fetches",    defaultValue: "Fetches"),
-            "TodoWrite":    String(localized: "step.tasks",      defaultValue: "Tasks"),
-            "Task":         String(localized: "step.agent",      defaultValue: "Agent"),
-            "LS":           String(localized: "step.lists",      defaultValue: "Lists"),
-            "MultiEdit":    String(localized: "step.edits",      defaultValue: "Edits"),
-            "NotebookEdit": String(localized: "step.notebook",   defaultValue: "Notebook"),
-            // Codex tools
-            "apply_patch":  String(localized: "step.edits",     defaultValue: "Edits"),
-            "update_plan":  String(localized: "step.tasks",     defaultValue: "Tasks"),
-            "spawn_agent":  String(localized: "step.agent",     defaultValue: "Agent"),
-        ]
-        var label = labels[tool] ?? tool
+        var label = StepKind.tools[tool]?.verb ?? tool
 
         // Codex MCP tools arrive as mcp__server__tool — show "server · tool"
         if tool.hasPrefix("mcp__") {
@@ -1187,7 +1194,7 @@ final class HookServer: @unchecked Sendable {
 
         // Bash: infer a more precise verb from the command
         if tool == "Bash", let cmd = input["command"] as? String {
-            return "\(bashVerb(cmd)) · \(oneLine(cmd))"
+            return "\(StepKind.shell(cmd).verb) · \(oneLine(cmd))"
         }
 
         // apply_patch: extract the first file name from the patch
@@ -1213,21 +1220,6 @@ final class HookServer: @unchecked Sendable {
             return "\(label) · \(oneLine(query))"
         }
         return label
-    }
-
-    /// Infers a localized verb from a shell command's first word.
-    private func bashVerb(_ command: String) -> String {
-        let first = command.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
-        switch first {
-        case "cat", "bat", "head", "tail", "less", "more", "nl": return String(localized: "step.reads",    defaultValue: "Reads")
-        case "rg", "grep", "find", "fd", "ls", "tree", "wc":    return String(localized: "step.searches", defaultValue: "Searches")
-        default: break
-        }
-        let testRunners = ["pytest", "vitest", "jest", "npm test", "npm run test",
-                           "cargo test", "go test", "swift test", "make test",
-                           "xcodebuild test", "unittest"]
-        if testRunners.contains(where: { command.contains($0) }) { return String(localized: "step.tests", defaultValue: "Tests") }
-        return String(localized: "step.runs", defaultValue: "Runs")
     }
 
     // MARK: - Live diff helpers

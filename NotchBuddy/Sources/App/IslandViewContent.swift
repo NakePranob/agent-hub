@@ -58,66 +58,26 @@ struct OverviewView: View {
         HStack(spacing: 10) {
             // Left card: title row + ticker below + ↗ button overlay
             ZStack(alignment: .topLeading) {
-                CardBackground(wash: nil)
+                // A turn just over lights the card green from below, as long as the pill shows it.
+                CardBackground(wash: agent?.state == .finished ? .green : nil)
+                    .animation(.easeInOut(duration: 0.4), value: agent?.state)
 
-                // Title row + ticker stacked (or integration card)
+                // Title row + step wheel (or integration card)
                 if let agent = agent {
                     if agent.isIntegration {
                         IntegrationCardView(task: agent, showingDetail: $showingN8nDetail, onDiffTap: { diffIdx in
                             withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
                         }, onSessionList: openSessionList)
                     } else {
-                        VStack(alignment: .leading, spacing: 0) {
-                            HStack(spacing: 6) {
-                                if let lanes = state.sessionLanes[agent.id] {
-                                    SessionLaneRow(pillId: agent.id, lanes: lanes,
-                                                   shownId: state.shownLane(of: agent.id)?.id,
-                                                   onMore: openSessionList)
-                                } else {
-                                    Circle()
-                                        .fill(Color(hex: agent.color))
-                                        .frame(width: 7, height: 7)
-                                    Text(agent.name)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Color(hex: "#F5F6F8"))
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                        .layoutPriority(1)
-                                    Text({ () -> String in
-                                        switch agent.source {
-                                        case .claudeCode: return "Claude Code"
-                                        case .agent:      return "Agent"
-                                        case .n8n:        return "n8n"
-                                        }
-                                    }())
-                                        .font(.system(size: 11))
-                                        .foregroundColor(Color(hex: "#8E939C"))
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    Spacer(minLength: 2)
-                                    if agent.steps.count > 1 {
-                                        Text("\(min(agent.stepIndex + 1, agent.steps.count))/\(agent.steps.count)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Color(hex: "#6B7079"))
-                                            .fixedSize()
-                                    }
-                                }
+                        SessionCardBody(task: agent, subtitle: {
+                            switch agent.source {
+                            case .claudeCode: return "Claude Code"
+                            case .agent:      return "Agent"
+                            case .n8n:        return "n8n"
                             }
-                            .padding(.top, 6)
-                            .padding(.leading, 108)
-                            .padding(.trailing, 36)
-
-                            TickerView(task: agent, onDiffTap: { diffIdx in
-                                withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
-                            })
-                                .id(state.shownLane(of: agent.id)?.id)  // another session: start over
-                                .frame(height: 44)
-                                .padding(.top, 6)
-                                .padding(.leading, 108)
-                                .padding(.trailing, 12)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(.top, 4)
+                        }(), onSessionList: openSessionList, onDiffTap: { diffIdx in
+                            withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
+                        })
                     }
                 }
 
@@ -2157,48 +2117,9 @@ struct IntegrationCardView: View {
                 .transition(.opacity)
             #endif
         } else if agentSessionActive {
-            // Active session view — reuse overview layout
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    if let lanes = appState.sessionLanes[task.id] {
-                        SessionLaneRow(pillId: task.id, lanes: lanes,
-                                       shownId: appState.shownLane(of: task.id)?.id,
-                                       onMore: onSessionList)
-                    } else {
-                        Circle()
-                            .fill(Color(hex: task.color))
-                            .frame(width: 7, height: 7)
-                        Text(task.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(Color(hex: "#F5F6F8"))
-                            .lineLimit(1).truncationMode(.tail)
-                            .layoutPriority(1)
-                        Text(PillCatalog.definition(for: task.id)?.sessionSubtitle ?? "Agent")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "#8E939C"))
-                            .lineLimit(1).truncationMode(.tail)
-                        Spacer(minLength: 2)
-                        if task.steps.count > 1 {
-                            Text("\(min(task.stepIndex + 1, task.steps.count))/\(task.steps.count)")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "#6B7079"))
-                                .fixedSize()
-                        }
-                    }
-                }
-                .padding(.top, 6)
-                .padding(.leading, 108)
-                .padding(.trailing, 36)
-
-                TickerView(task: task, onDiffTap: onDiffTap)
-                    .id(appState.shownLane(of: task.id)?.id)  // another session: start over
-                    .frame(height: 44)
-                    .padding(.top, 6)
-                    .padding(.leading, 108)
-                    .padding(.trailing, 12)
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(.top, 4)
+            SessionCardBody(task: task,
+                            subtitle: PillCatalog.definition(for: task.id)?.sessionSubtitle ?? "Agent",
+                            onSessionList: onSessionList, onDiffTap: onDiffTap)
         } else {
             // Idle / not connected view — slides in from left when returning from detail
             VStack(alignment: .leading, spacing: 6) {
@@ -3805,7 +3726,6 @@ struct SessionLaneRow: View {
                 .chip(selected: false)
             }
             .buttonStyle(.plain)
-            Spacer(minLength: 0)
         }
     }
 
@@ -3900,219 +3820,301 @@ struct SessionListView: View {
     }
 }
 
-struct TickerView: View {
-    let task: AgentTask?
+// MARK: - Session card (what was asked, then the step wheel)
+
+/// The left card of a pill with a live session: the session and what was asked on top,
+/// then the wheel — the step before, the step now, and what the turn has done so far.
+struct SessionCardBody: View {
+    let task: AgentTask
+    /// Shown until something is asked ("Claude Code", "Agent").
+    let subtitle: String
+    var onSessionList: () -> Void = {}
+    var onDiffTap: ((Int) -> Void)? = nil
+    @ObservedObject private var appState = AppState.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                if let lanes = appState.sessionLanes[task.id] {
+                    SessionLaneRow(pillId: task.id, lanes: lanes,
+                                   shownId: appState.shownLane(of: task.id)?.id,
+                                   onMore: onSessionList)
+                        .layoutPriority(1)
+                } else {
+                    Circle()
+                        .fill(Color(hex: task.color))
+                        .frame(width: 7, height: 7)
+                    Text(task.name)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "#F5F6F8"))
+                        .lineLimit(1).truncationMode(.tail)
+                        .layoutPriority(1)
+                }
+                let prompt = task.turn?.prompt ?? ""
+                Text(prompt.isEmpty ? subtitle : "“\(prompt)”")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: "#8E939C"))
+                    .lineLimit(1).truncationMode(.tail)
+                    .help(prompt)
+                Spacer(minLength: 4)
+                if let turn = task.turn {
+                    TurnClock(turn: turn, running: task.state != .idle)
+                }
+            }
+            .padding(.top, 6)
+            .padding(.leading, 108)
+            .padding(.trailing, 36)
+
+            StepWheel(task: task, onDiffTap: onDiffTap)
+                .id(appState.shownLane(of: task.id)?.id)  // another session: start over
+                .frame(height: 64)
+                .padding(.top, 2)
+                .padding(.leading, 108)
+                .padding(.trailing, 12)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.top, 4)
+    }
+}
+
+/// How long the turn has taken: counting while the agent is at it, "Done · 2:14" after.
+struct TurnClock: View {
+    let turn: AgentTurn
+    let running: Bool
+    @Environment(\.islandViewActive) private var active
+
+    var body: some View {
+        Group {
+            if let end = turn.endedAt {
+                Text(verbatim: "\(String(localized: "Done")) · \(Self.format(end.timeIntervalSince(turn.startedAt)))")
+            } else if running {
+                TimelineView(.animation(minimumInterval: 1, paused: !active)) { tl in
+                    Text(verbatim: Self.format(tl.date.timeIntervalSince(turn.startedAt)))
+                }
+            }
+        }
+        .font(.system(size: 11).monospacedDigit())
+        .foregroundColor(Color(hex: "#6B7079"))
+        .fixedSize()
+    }
+
+    static func format(_ interval: TimeInterval) -> String {
+        let s = max(0, Int(interval))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+                         : String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// The turn's steps as a wheel: the one before above, small and dim; the one now in the
+/// middle, its icon in colour; the turn's summary below. A new step rolls the wheel up.
+struct StepWheel: View {
+    let task: AgentTask
     var onDiffTap: ((Int) -> Void)? = nil
 
-    @State private var rowA: String = "…"   // completed (above, left-shifted)
-    @State private var rowB: String = "…"   // current (below) → animates diagonally up-left
-    @State private var rowC: String = ""    // incoming current — slides in from below
+    struct Line: Identifiable, Equatable { let id: Int; let text: String }
 
-    @State private var rowAOffset: CGFloat = 0
-    @State private var rowAOpacity: Double = 1
-    @State private var rowBOffset: CGFloat = 22
-    @State private var rowBPhase:  Double  = 0   // 0=current, 1=completed (drives X+scale)
-    @State private var rowCOffset: CGFloat = 44
-    @State private var rowCOpacity: Double = 0
-
-    @State private var displayIndex: Int = -1
-    @State private var isTransitioning = false
-
-    private let completedScale: CGFloat = 11.5 / 13   // 0.885 — matches completed font size
-
-    var steps: [String] {
-        let raw = task?.steps ?? []
-        return raw.isEmpty ? ["…"] : raw
+    /// This turn's steps, numbered from its start so a row keeps its identity when the
+    /// log drops its oldest line. Without a turn (an agent that never sends its prompt), all.
+    static func lines(of task: AgentTask) -> [Line] {
+        let steps = task.steps
+        let count = task.turn.map { min($0.stepCount, steps.count) } ?? steps.count
+        let first = (task.turn?.stepCount ?? steps.count) - count
+        return steps.suffix(count).enumerated().map { Line(id: first + $0.offset, text: $0.element) }
     }
 
     var body: some View {
-        let isActive = task?.state == .thinking || task?.state == .working
-        let rowADiffTap: (() -> Void)? = rowA.parseDiffStep().map { dp in { onDiffTap?(dp.diffId) } }
-        let rowBDiffTap: (() -> Void)? = rowB.parseDiffStep().map { dp in { onDiffTap?(dp.diffId) } }
-
-        ZStack(alignment: .topLeading) {
-            Color.clear
-
-            // Row A: completed row — always rendered at phase=1 + completedScale
-            // Row A never shows its shimmer (phase 1): it doesn't animate one either.
-            TickerRowView(text: rowA, phase: 1.0, isActive: isActive, shimmerPaused: true, onDiffTap: rowADiffTap)
-                .scaleEffect(completedScale, anchor: .leading)
-                .offset(x: -10, y: rowAOffset)
-                .opacity(rowAOpacity)
-
-            // Row B: current step → animates diagonally up-left, phase 0→1, scale 1→completedScale
-            TickerRowView(text: rowB, phase: rowBPhase, isActive: isActive, onDiffTap: rowBDiffTap)
-                .scaleEffect(1 - rowBPhase * (1 - completedScale), anchor: .leading)
-                .offset(x: -rowBPhase * 10, y: rowBOffset)
-
-            // Row C: incoming new step — slides in from below at phase=0
-            TickerRowView(text: rowC, phase: 0.0, isActive: isActive)
-                .offset(y: rowCOffset)
-                .opacity(rowCOpacity)
+        let lines = Array(Self.lines(of: task).suffix(2))
+        let busy = task.state == .working || task.state == .thinking || task.state == .searching
+        let done = !busy && task.turn?.endedAt != nil
+        ZStack(alignment: .leading) {
+            if lines.isEmpty, task.turn != nil, busy {
+                StepWheelRow(text: String(localized: "Thinking…"), isNow: true, busy: true, done: false,
+                             thinking: true)
+                    .transition(.opacity)
+            }
+            ForEach(Array(lines.enumerated()), id: \.element.id) { i, line in
+                let isNow = i == lines.count - 1
+                StepWheelRow(text: line.text, isNow: isNow, busy: busy, done: done,
+                             onDiffTap: line.text.parseDiffStep().flatMap { dp in onDiffTap.map { tap in { tap(dp.diffId) } } })
+                    .scaleEffect(isNow ? 1 : 0.84, anchor: .leading)
+                    .offset(y: isNow ? 0 : -21)
+                    .opacity(isNow ? 1 : 0.6)
+                    .transition(.asymmetric(insertion: .offset(y: 14).combined(with: .opacity),
+                                            removal: .offset(y: -14).combined(with: .opacity)))
+            }
+            if let turn = task.turn {
+                TurnSummary(turn: turn)
+                    .offset(y: 21)
+            }
         }
-        .frame(height: 44)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .clipped()
         .mask(LinearGradient(
             stops: [
                 .init(color: .clear, location: 0),
-                .init(color: .black, location: 0.12),
-                .init(color: .black, location: 0.85),
+                .init(color: .black, location: 0.1),
+                .init(color: .black, location: 0.92),
                 .init(color: .clear, location: 1)
             ],
             startPoint: .top, endPoint: .bottom
         ))
-        .onAppear {
-            let idx = task?.stepIndex ?? -1
-            displayIndex = idx
-            if idx >= 0, !steps.isEmpty {
-                rowA = idx > 0 ? steps[max(0, idx - 1)] : "…"
-                rowB = steps[min(idx, steps.count - 1)]
-            }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: lines.last?.id)
+    }
+}
+
+/// One line of the wheel: its kind's icon, then the verb and what it acts on.
+struct StepWheelRow: View {
+    let text: String
+    let isNow: Bool
+    /// The agent is at work: the line now shimmers.
+    let busy: Bool
+    /// The turn is over: the line now is how it ended, behind a check.
+    let done: Bool
+    var thinking = false
+    var onDiffTap: (() -> Void)? = nil
+
+    var body: some View {
+        let kind = StepKind.of(text)
+        HStack(spacing: 7) {
+            icon(kind)
+            content(kind)
         }
-        .onChange(of: task?.steps.count) { _, _ in
-            guard let task, !task.steps.isEmpty, !isTransitioning else { return }
-            let newIdx = task.stepIndex
-            if displayIndex < 0 {
-                displayIndex = newIdx
-                rowA = newIdx > 0 ? steps[max(0, newIdx - 1)] : "…"
-                rowB = steps[min(newIdx, steps.count - 1)]
-                return
-            }
-            guard newIdx != displayIndex else { return }
-            tickerAnimate(to: newIdx)
+        .frame(height: 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { onDiffTap?() }
+    }
+
+    private var answered: Bool { isNow && done }
+    private var shimmers: Bool { isNow && busy }
+
+    @ViewBuilder private func icon(_ kind: StepKind?) -> some View {
+        let symbol = answered ? "checkmark" : thinking ? "sparkle" : kind?.symbol ?? "chevron.right"
+        let tint = answered ? Color(hex: RobotMood.done.glowHex)
+            : thinking ? StepKind.plan.tint : kind?.tint ?? Color(hex: "#8E939C")
+        if isNow {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 20, height: 20)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tint.opacity(0.16)))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(tint.opacity(0.28), lineWidth: 1))
+        } else {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(Color(hex: "#6B7079"))
+                .frame(width: 20, height: 20)
         }
     }
 
-    private func tickerAnimate(to newIdx: Int) {
-        isTransitioning = true
-        rowC = steps[min(newIdx, steps.count - 1)]
-        rowCOffset = 44
-        rowCOpacity = 0
-
-        // Old completed (rowA): fades + slides further up
-        withAnimation(.easeOut(duration: 0.28)) {
-            rowAOffset  = -22
-            rowAOpacity = 0
+    @ViewBuilder private func content(_ kind: StepKind?) -> some View {
+        let detailColor = Color(hex: isNow ? "#C9CDD4" : "#6B7079")
+        if let dp = text.parseDiffStep() {
+            Text(dp.filename)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(detailColor)
+                .lineLimit(1).truncationMode(.middle)
+            if dp.added > 0 {
+                Text(verbatim: "+\(dp.added)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Color(hex: "#22C55E"))
+                    .fixedSize()
+            }
+            if dp.removed > 0 {
+                Text(verbatim: "−\(dp.removed)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(Color(hex: "#F4505E"))
+                    .fixedSize()
+            }
+        } else if kind != nil, !answered {
+            // "Runs · git status": the verb, then what it acts on in monospace.
+            let parts = text.components(separatedBy: " · ")
+            label(parts[0], weight: .semibold).fixedSize()
+            if parts.count > 1 {
+                Text(parts.dropFirst().joined(separator: " · "))
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(detailColor)
+                    .lineLimit(1).truncationMode(.tail)
+            }
+        } else {
+            // A prompt, an answer, a question, an MCP tool.
+            label(text, weight: answered ? .semibold : .medium)
         }
+    }
 
-        // Current (rowB): moves diagonally up-left + shrinks to completed size
-        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.38)) {
-            rowBOffset = 0
-            rowBPhase  = 1
-        }
-
-        // New current (rowC): slides in from below
-        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.38)) {
-            rowCOffset  = 22
-            rowCOpacity = 1
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.50) {
-            self.displayIndex    = newIdx
-            self.rowA            = self.rowB
-            self.rowAOffset      = 0
-            self.rowAOpacity     = 1
-            self.rowB            = self.rowC
-            self.rowBOffset      = 22
-            self.rowBPhase       = 0
-            self.rowCOffset      = 44
-            self.rowCOpacity     = 0
-            self.isTransitioning = false
+    @ViewBuilder private func label(_ string: String, weight: Font.Weight) -> some View {
+        let font = Font.system(size: 13, weight: weight)
+        if shimmers {
+            TickerShimmerText(text: string, font: font)
+        } else {
+            Text(string)
+                .font(font)
+                .foregroundColor(Color(hex: isNow ? "#F5F6F8" : "#8E939C"))
+                .lineLimit(1).truncationMode(.tail)
         }
     }
 }
 
-struct TickerRowView: View {
-    let text: String
-    let phase: Double   // 0 = current (shimmer, large), 1 = completed (dim, scaled down by caller)
-    var isActive: Bool = true
-    var shimmerPaused: Bool = false
-    var onDiffTap: (() -> Void)? = nil
+/// What the turn has done so far: the files it changed, then each kind of step it took.
+struct TurnSummary: View {
+    let turn: AgentTurn
 
     var body: some View {
-        let chevronOpacity:   Double = isActive ? max(0, 1 - phase * 2)       : 0
-        let checkmarkOpacity: Double = isActive ? max(0, phase * 2 - 1)       : 1
-        let shimmerOpacity:   Double = isActive ? max(0, 1 - phase * 1.6)     : 0
-        let staticOpacity:    Double = isActive ? min(1, max(0, phase * 2 - 0.4)) : 1
-        let staticColor = (!isActive && phase < 0.5) ? Color(hex: "#C9CDD4") : Color(hex: "#6B7079")
-
-        if let dp = text.parseDiffStep() {
-            HStack(spacing: 6) {
-                ZStack {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(hex: "#8E939C"))
-                        .opacity(chevronOpacity)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .regular))
-                        .foregroundColor(Color(hex: "#454850"))
-                        .opacity(checkmarkOpacity)
-                }
-                .frame(width: 12, alignment: .center)
-                // Filename + counts
-                HStack(spacing: 0) {
-                    ZStack(alignment: .leading) {
-                        TickerShimmerText(text: dp.filename, paused: shimmerPaused || !isActive)
-                            .opacity(shimmerOpacity)
-                        Text(dp.filename)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(staticColor)
-                            .lineLimit(1).truncationMode(.tail)
-                            .opacity(staticOpacity)
-                    }
-                    if dp.added > 0 {
-                        Text(" +\(dp.added)")
-                            .font(.system(size: 10, weight: .medium).monospaced())
-                            .foregroundColor(Color(hex: "#22C55E"))
-                            .fixedSize()
-                    }
-                    if dp.removed > 0 {
-                        Text(" −\(dp.removed)")
-                            .font(.system(size: 10, weight: .medium).monospaced())
-                            .foregroundColor(Color(hex: "#F4505E"))
-                            .fixedSize()
-                    }
+        HStack(spacing: 7) {
+            Color.clear.frame(width: 20, height: 1)   // under the wheel's icons
+            if !turn.files.isEmpty {
+                HStack(spacing: 4) {
+                    Text(verbatim: turn.files.count == 1 ? "1 file" : "\(turn.files.count) files")
+                    if turn.added > 0 { Text(verbatim: "+\(turn.added)").foregroundColor(Color(hex: "#22C55E")) }
+                    if turn.removed > 0 { Text(verbatim: "−\(turn.removed)").foregroundColor(Color(hex: "#F4505E")) }
                 }
             }
-            .frame(height: 22, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture { onDiffTap?() }
-        } else {
-            HStack(spacing: 6) {
-                // Icon: chevron fades out first half, checkmark fades in second half
-                ZStack {
-                    Image(systemName: "chevron.right")
+            ForEach(StepKind.allCases.filter { turn.tally[$0, default: 0] > 0 }, id: \.self) { kind in
+                HStack(spacing: 2) {
+                    Image(systemName: kind.symbol)
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(hex: "#8E939C"))
-                        .opacity(chevronOpacity)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .regular))
-                        .foregroundColor(Color(hex: "#454850"))
-                        .opacity(checkmarkOpacity)
-                }
-                .frame(width: 12, alignment: .center)
-
-                // Text: shimmer fades out, dim completed text fades in (overlapping cross-fade)
-                ZStack(alignment: .leading) {
-                    // An idle task never shows the shimmer (nor row A, see shimmerPaused).
-                    TickerShimmerText(text: text, paused: shimmerPaused || !isActive)
-                        .opacity(shimmerOpacity)
-                    Text(text)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(staticColor)
-                        .lineLimit(1).truncationMode(.tail)
-                        .opacity(staticOpacity)
+                        .foregroundColor(kind.tint.opacity(0.75))
+                    Text(verbatim: "×\(turn.tally[kind, default: 0])")
                 }
             }
-            .frame(height: 22, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.system(size: 10, design: .monospaced))
+        .foregroundColor(Color(hex: "#6B7079"))
+        .lineLimit(1)
+    }
+}
+
+extension StepKind {
+    var symbol: String {
+        switch self {
+        case .search: "magnifyingglass"
+        case .read:   "doc.text"
+        case .edit:   "pencil"
+        case .run:    "terminal"
+        case .test:   "testtube.2"
+        case .web:    "globe"
+        case .agent:  "person.2"
+        case .plan:   "checklist"
+        case .fail:   "exclamationmark.triangle"
+        }
+    }
+
+    /// By group, not by tool: blue looks, green changes, white runs, purple plans.
+    var tint: Color {
+        switch self {
+        case .search, .read, .web: Color(hex: "#62A8FF")
+        case .edit:                Color(hex: "#4FF0A8")
+        case .run:                 Color(hex: "#E2E8F0")
+        case .test:                Color(hex: "#2DD4BF")
+        case .agent, .plan:        Color(hex: "#C084FC")
+        case .fail:                Color(hex: "#FF5A6A")
         }
     }
 }
 
 struct TickerShimmerText: View {
     let text: String
+    var font: Font = .system(size: 13, weight: .medium)
     var paused: Bool = false
     @Environment(\.islandViewActive) private var viewActive
 
@@ -4124,7 +4126,7 @@ struct TickerShimmerText: View {
             // phase sweeps -0.1 → 1.1 so white peak enters from left and exits right
             let phase = p * 1.2 - 0.1
             Text(text)
-                .font(.system(size: 13, weight: .medium))
+                .font(font)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(LinearGradient(stops: [

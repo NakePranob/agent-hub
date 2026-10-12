@@ -15,6 +15,7 @@ swiftc \
   -target arm64-apple-macosx15.0 \
   NotchBuddy/Sources/CoucouKit/IslandScreenGeometry.swift \
   NotchBuddy/Sources/CoucouKit/IslandTypes.swift \
+  NotchBuddy/Sources/CoucouKit/AgentTurn.swift \
   NotchBuddy/Sources/CoucouKit/MochiWardrobe.swift \
   NotchBuddy/Sources/CoucouKit/BotEngine.swift \
   NotchBuddy/Sources/CoucouKit/MochiOutfitDrawing.swift \

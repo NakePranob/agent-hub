@@ -414,6 +414,7 @@ final class AppState: ObservableObject {
         shown.name = lane.label
         shown.steps = lane.steps
         shown.stepIndex = max(0, lane.steps.count - 1)
+        shown.turn = lane.turn
         shown.state = lane.isWaiting ? .approval : lane.isWorking ? .working : .idle
         if !lane.cwd.isEmpty { shown.sessionCwd = lane.cwd }
         if !lane.bundleId.isEmpty { shown.sessionBundleId = lane.bundleId }

@@ -65,6 +65,8 @@ struct PillSessionRegistry {
         /// When it last went from idle to working: the card follows the session you
         /// prompted last, so two sessions working side by side don't make it flicker.
         var turnStartedAt: Date
+        /// This session's last prompt and what came of it.
+        var turn: AgentTurn? = nil
     }
 
     private struct Session {
@@ -77,6 +79,7 @@ struct PillSessionRegistry {
         var turnStartedAt: Date
         var folder = ""
         var steps: [String] = []
+        var turn: AgentTurn? = nil
     }
 
     /// Ticker lines kept per session, like the pill's own log.
@@ -120,9 +123,16 @@ struct PillSessionRegistry {
     /// Adds a ticker line to one session's own log. A session never noted stays untracked.
     mutating func appendStep(pill: String, session: String, step: String) {
         pills[pill]?.sessions[session]?.steps.append(step)
+        pills[pill]?.sessions[session]?.turn?.stepCount += 1
         if let count = pills[pill]?.sessions[session]?.steps.count, count > Self.maxSteps {
             pills[pill]?.sessions[session]?.steps.removeFirst(count - Self.maxSteps)
         }
+    }
+
+    /// Changes one session's turn. A session never noted stays untracked.
+    mutating func updateTurn(pill: String, session: String, _ change: (inout AgentTurn?) -> Void) {
+        guard pills[pill]?.sessions[session] != nil else { return }
+        change(&pills[pill]!.sessions[session]!.turn)
     }
 
     // MARK: - Terminal events
@@ -182,7 +192,7 @@ struct PillSessionRegistry {
             guard let s = p.sessions[id] else { return nil }
             return Lane(id: id, label: s.folder.isEmpty ? s.projectName : s.folder, cwd: s.cwd,
                         hostApp: s.hostApp, bundleId: s.bundleId, isWorking: s.isWorking,
-                        steps: s.steps, turnStartedAt: s.turnStartedAt)
+                        steps: s.steps, turnStartedAt: s.turnStartedAt, turn: s.turn)
         }
     }
 

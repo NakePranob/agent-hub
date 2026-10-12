@@ -243,6 +243,22 @@ enum PillSessionRegistryTests {
                   ext.lanes(of: "agent_gemini").first?.label == "coucou")
         }
 
+        // ── a session's turn: its prompt, and the steps that answer it ──────────
+        print("\nTurn")
+        do {
+            var reg = PillSessionRegistry()
+            reg.note(pill: claude, display: display("a", "coucou"), working: true)
+            reg.appendStep(pill: claude, session: "a", step: "fix the build")
+            reg.updateTurn(pill: claude, session: "a") { $0 = AgentTurn(prompt: "fix the build", startedAt: Date()) }
+            reg.appendStep(pill: claude, session: "a", step: "Reads · App.swift")
+            reg.appendStep(pill: claude, session: "a", step: "Runs · make")
+            reg.updateTurn(pill: claude, session: "ghost") { $0 = AgentTurn(prompt: "x", startedAt: Date()) }
+            let lane = reg.lanes(of: claude).first
+            check("the lane carries its turn", lane?.turn?.prompt == "fix the build")
+            check("the turn counts only the steps after its prompt", lane?.turn?.stepCount == 2)
+            check("a session never seen gets no turn", reg.lanes(of: claude).count == 1)
+        }
+
         // ── finish ─────────────────────────────────────────────────────────────
         if failures == 0 {
             print("\nAll tests passed.")
