@@ -200,32 +200,33 @@ enum IslandConst {
     static func headerLift(nh: CGFloat) -> CGFloat { max(0, designHeaderBottom - nh) }
 
     static let viewLayouts: [IslandView: ViewLayout] = [
-        // Home is the reference: height 150
-        .overview:  ViewLayout(height: 160, botX: 68,  botY: nil, botDiameter: 58, agentMode: .pills),
+        // Home is the reference: height 150, which leaves the cards 10 pt from the bottom edge
+        // as from the sides (once the header's lift is taken off)
+        .overview:  ViewLayout(height: 150, botX: 68,  botY: nil, botDiameter: 58, agentMode: .pills),
         // All non-chat views match home height (150) — law
-        .empty:     ViewLayout(height: 160, botX: 70,  botY: nil, botDiameter: 62, agentMode: .none),
-        .approval:  ViewLayout(height: 160, botX: 62,  botY: nil, botDiameter: 56, agentMode: .column),
-        .question:  ViewLayout(height: 160, botX: 62,  botY: nil, botDiameter: 56, agentMode: .column),
-        .error:     ViewLayout(height: 160, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
-        .finished:  ViewLayout(height: 160, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
-        .confused:  ViewLayout(height: 160, botX: 76,  botY: nil, botDiameter: 66, agentMode: .column),
+        .empty:     ViewLayout(height: 150, botX: 70,  botY: nil, botDiameter: 62, agentMode: .none),
+        .approval:  ViewLayout(height: 150, botX: 62,  botY: nil, botDiameter: 56, agentMode: .column),
+        .question:  ViewLayout(height: 150, botX: 62,  botY: nil, botDiameter: 56, agentMode: .column),
+        .error:     ViewLayout(height: 150, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
+        .finished:  ViewLayout(height: 150, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
+        .confused:  ViewLayout(height: 150, botX: 76,  botY: nil, botDiameter: 66, agentMode: .column),
         .upload:    ViewLayout(height: 176, botX: 140, botY: 104, botDiameter: 62, agentMode: .column),
         .uploading: ViewLayout(height: 176, botX: 46,  botY: 118, botDiameter: 20, agentMode: .none),
         .choose:    ViewLayout(height: 176, botX: 60,  botY: 101, botDiameter: 52, agentMode: .column),
         .mail:      ViewLayout(height: 240, botX: 56,  botY: nil, botDiameter: 46, agentMode: .column),
         .prompt:    ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
-        .searching: ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
-        .result:    ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
-        .note:      ViewLayout(height: 160, botX: 60,  botY: nil, botDiameter: 50, agentMode: .column),
-        .settings:  ViewLayout(height: 160, botX: 54,  botY: nil, botDiameter: 46, agentMode: .none),
+        .searching: ViewLayout(height: 150, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
+        .result:    ViewLayout(height: 150, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
+        .note:      ViewLayout(height: 150, botX: 60,  botY: nil, botDiameter: 50, agentMode: .column),
+        .settings:  ViewLayout(height: 150, botX: 54,  botY: nil, botDiameter: 46, agentMode: .none),
         // Greeting: bot drawn by GreetingCanvasView; no BotPlacement needed
         .greeting:  ViewLayout(height: 150, botX: 320, botY: 90,  botDiameter: 0,  agentMode: .none),
-        .wardrobe:  ViewLayout(height: 160, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
-        .recap:     ViewLayout(height: 160, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
+        .wardrobe:  ViewLayout(height: 150, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
+        .recap:     ViewLayout(height: 150, botX: 62,  botY: nil, botDiameter: 58, agentMode: .column),
         // Voice listening: Mochi (listening emote) on left, transcript on right
-        .listening:    ViewLayout(height: 160, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
+        .listening:    ViewLayout(height: 150, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
         // Voice result: same layout as listening — Mochi on left, ✓/✗ on right
-        .voiceResult:  ViewLayout(height: 160, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
+        .voiceResult:  ViewLayout(height: 150, botX: 68,  botY: nil, botDiameter: 58, agentMode: .none),
     ]
 
     // Project colors — keyed by lowercase display name or slug

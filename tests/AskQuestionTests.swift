@@ -122,9 +122,9 @@ enum AskQuestionTests {
         ], multiSelect: true)
         checkTrue("chips only → no descriptions",          !shortQ.hasDescriptions)
         checkTrue("one description → vertical list",       longQ.hasDescriptions)
-        checkTrue("short question keeps the 160 pt floor", AskQuestion(questions: [shortQ]).estimatedIslandHeight == 160)
+        checkTrue("short question keeps the 150 pt floor", AskQuestion(questions: [shortQ]).estimatedIslandHeight == 150)
         let tall = AskQuestion(questions: [shortQ, longQ]).estimatedIslandHeight
-        checkTrue("tallest question wins, within cap",     tall > 160 && tall <= 560)
+        checkTrue("tallest question wins, within cap",     tall > 150 && tall <= 560)
 
         // ── finish ─────────────────────────────────────────────────────────────
         if failures == 0 {

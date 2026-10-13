@@ -45,8 +45,8 @@ struct AskQuestion: Equatable {
             }
             if item.multiSelect { h += 34 }
             return h
-        }.max() ?? 160
-        return min(max(tallest, 160), 560)
+        }.max() ?? 150
+        return min(max(tallest, 150), 560)
     }
 
     // MARK: - Parse from tool_input dict
