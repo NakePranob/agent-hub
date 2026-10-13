@@ -407,6 +407,8 @@ struct RobotStatusBadge: View {
             case .working, .thinking, .searching:
                 self = task.turn != nil && ActivityBox.current(task) == nil ? .thinking : .working
             default:
+                // A sibling session keeps the pill working: this session's own failure.
+                if task.turn?.failed == true { self = .error; return }
                 // The finished view covers the overview for its first seconds: the check
                 // still shows when the overview comes back.
                 guard let end = task.turn?.endedAt, now.timeIntervalSince(end) < 10 else { return nil }

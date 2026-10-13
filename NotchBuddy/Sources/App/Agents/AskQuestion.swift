@@ -26,6 +26,8 @@ extension AskQuestionItem {
 
 struct AskQuestion: Equatable {
     var questions: [AskQuestionItem]   // 1–4 questions
+    /// Project of the session that asks, for the card's first line.
+    var projectName: String = ""
 
     /// Island height that fits the tallest question without truncation (rough estimate, text wraps at ~500 pt).
     var estimatedIslandHeight: CGFloat {

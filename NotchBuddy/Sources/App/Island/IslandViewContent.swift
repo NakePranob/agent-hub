@@ -12,8 +12,8 @@ struct IslandViewContent: View {
         case .empty:     EmptyStateView(state: state)
         case .approval:  ApprovalView(state: state)
         case .question:  QuestionView(state: state)
-        case .error:     ErrorView(state: state)
-        case .finished:  FinishedView(state: state)
+        // A turn's end and its failure show on the overview card (HookServer opens it).
+        case .finished, .error: EmptyView()
         case .confused:  ConfusedView()
         case .upload:    UploadView(state: state)
         case .uploading: UploadingView(state: state)

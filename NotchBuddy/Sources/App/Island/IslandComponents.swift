@@ -120,11 +120,86 @@ struct CodeBlock: View {
     var body: some View {
         Text(text)
             .font(.system(size: 12, design: .monospaced))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Color.white.opacity(0.07))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .lineLimit(1).truncationMode(.middle)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.black.opacity(0.38))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.06)))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
             .foregroundColor(Color(hex: "#E8E9EC"))
+    }
+}
+
+/// The colours of what an agent is doing, shared by the cards, the robot's badge and its light.
+enum StatusColor {
+    static let working  = Color(hex: "#0A84FF")
+    static let thinking = Color(hex: "#BF5AF2")
+    static let waiting  = Color(hex: "#FF9F0A")
+    static let done     = Color(hex: "#30D158")
+    static let failed   = Color(hex: "#FF453A")
+    static let note     = Color(hex: "#FF375F")
+}
+
+/// The first line of a card about a session: its app's logo, its name, what it is doing
+/// in that state's colour, and a counter on the right ("1/3").
+struct StatusHeader: View {
+    let task: AgentTask?
+    let status: String
+    let color: Color
+    var counter: String? = nil
+
+    var body: some View {
+        HStack(spacing: 7) {
+            if let task {
+                PillLogo(task: task, size: 14, ringed: false)
+                Text(task.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Color(hex: "#F5F6F8"))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
+            Text(status)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(color)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if let counter {
+                Text(verbatim: counter)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundColor(Color(hex: "#9C9CA3"))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.white.opacity(0.07)))
+            }
+        }
+        .frame(height: 18)
+    }
+}
+
+/// A state's light, rising into a card from the robot's side.
+struct SoftGlow: View {
+    let color: Color
+
+    var body: some View {
+        RadialGradient(colors: [color.opacity(0.18), .clear],
+                       center: UnitPoint(x: 0.08, y: 0.5), startRadius: 0, endRadius: 280)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .allowsHitTesting(false)
+    }
+}
+
+/// The square that holds a step's icon, tinted in its kind's colour.
+struct KindChip: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 22
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.48, weight: .semibold))
+            .foregroundColor(tint)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.32, style: .continuous).fill(tint.opacity(0.2)))
     }
 }
 
@@ -234,14 +309,16 @@ struct PrimaryButton: View {
     let title: String
     let verbatim: Bool
     let kbd: String?
+    /// The state's own colour (Allow, Send) in place of white.
+    var tint: Color? = nil
     let action: () -> Void
 
-    init(_ title: String, kbd: String? = nil, action: @escaping () -> Void) {
-        self.title = title; self.verbatim = false; self.kbd = kbd; self.action = action
+    init(_ title: String, kbd: String? = nil, tint: Color? = nil, action: @escaping () -> Void) {
+        self.title = title; self.verbatim = false; self.kbd = kbd; self.tint = tint; self.action = action
     }
 
-    init(verbatim title: String, kbd: String? = nil, action: @escaping () -> Void) {
-        self.title = title; self.verbatim = true; self.kbd = kbd; self.action = action
+    init(verbatim title: String, kbd: String? = nil, tint: Color? = nil, action: @escaping () -> Void) {
+        self.title = title; self.verbatim = true; self.kbd = kbd; self.tint = tint; self.action = action
     }
 
     var body: some View {
@@ -258,8 +335,8 @@ struct PrimaryButton: View {
                 }
             }
             .padding(.horizontal, 13).padding(.vertical, 7)
-            .background(Color(hex: "#F5F6F8"))
-            .foregroundColor(Color(hex: "#0B0C0E"))
+            .background(tint ?? Color(hex: "#F5F6F8"))
+            .foregroundColor(tint == nil ? Color(hex: "#0B0C0E") : Color(hex: "#1D1300"))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)

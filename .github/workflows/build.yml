@@ -36,6 +36,9 @@ jobs:
       - name: Test step kinds
         run: bash scripts/test-step-kinds.sh
 
+      - name: Test session projects
+        run: bash scripts/test-session-project.sh
+
       - name: Test approval queue
         run: bash scripts/test-approval-queue.sh
 

@@ -560,7 +560,7 @@ final class DemoEngine: ObservableObject {
                 ? "npm test skipped (denied). Staged — run tests before merge."
                 : "All 23 tests pass (\(chosenReporter)). Auth refactor complete — 94 % coverage."
         }
-        NotificationCenter.default.post(name: .hookExpand, object: IslandView.finished)
+        NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
         await sleep(2.5); guard isActive, self.generation == gen else { return }
 
         // ── Step 7: Chat ─────────────────────────────────────────────────────────

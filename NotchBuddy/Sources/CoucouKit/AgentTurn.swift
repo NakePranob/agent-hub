@@ -10,6 +10,8 @@ struct AgentTurn: Equatable {
     var prompt: String
     var startedAt: Date
     var endedAt: Date? = nil
+    /// The turn ended on an error (StopFailure), for this session alone.
+    var failed = false
     /// Steps appended since the prompt: the card shows only this turn's, so "Thinking"
     /// until the first one rather than the previous turn's last line.
     var stepCount = 0

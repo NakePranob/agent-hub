@@ -100,6 +100,17 @@ enum PillIcons {
         return found
     }
 
+    private static var bundleIcons: [String: NSImage?] = [:]
+
+    /// The icon of the app with this bundle id, when it is on this Mac.
+    static func appIcon(bundleId: String?) -> NSImage? {
+        guard let id = bundleId, !id.isEmpty else { return nil }
+        if let hit = bundleIcons[id] { return hit }
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id).map { NSWorkspace.shared.icon(forFile: $0.path) }
+        bundleIcons[id] = icon
+        return icon
+    }
+
     /// What the initials are taken from.
     static func name(of task: AgentTask) -> String {
         PillCatalog.definition(for: task.id)?.name ?? task.name

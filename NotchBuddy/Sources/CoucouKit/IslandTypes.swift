@@ -58,6 +58,10 @@ struct ApprovalInfo: Sendable {
     var queueCount: Int = 1
     /// Project of the session that asks (several sessions can share one pill).
     var projectName: String = ""
+    /// What the request is for: a command's description, or the file it touches.
+    var detail: String = ""
+    /// The change an Edit, MultiEdit or Write asks to make, for "View diff".
+    var diff: FileDiff? = nil
 }
 
 // MARK: - Pill badge (shown on pill edge when non-focused task has an alert)

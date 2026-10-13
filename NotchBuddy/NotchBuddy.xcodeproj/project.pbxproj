@@ -100,6 +100,7 @@
 		422C116E73D2D9A96DAE104D /* MochiLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 265262A422C270C1798F4A80 /* MochiLive.swift */; };
 		42CF270495925897FA09640B /* LocalChat.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3DCE36493819BC92BB2578D /* LocalChat.swift */; };
 		440AAF9FA27CC3DF7CC9EF51 /* MochiStill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 045E7300878138F0AC385920 /* MochiStill.swift */; };
+		467CE5DBCE9D581A16D10E70 /* SessionProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21C17772B04D3BDA9156C74 /* SessionProject.swift */; };
 		46C6ED5BC8FD09C4AC9B9893 /* ShortcutsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A85ECCA66DE869111CEE636 /* ShortcutsSettingsView.swift */; };
 		4755AAC633DCE5DAA6D54A3C /* ServiceDetailRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6AAC67875F84A862BC2A9AF /* ServiceDetailRunner.swift */; };
 		4778852A12726803BCF8B357 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27178AA6007F7B56901750 /* SessionDetailView.swift */; };
@@ -387,6 +388,7 @@
 		F28275101D83F121E582B1B1 /* LiveActivityRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136626568FF0C3EAB1D08067 /* LiveActivityRelay.swift */; };
 		F34B57380686182356F3C2D2 /* PillSessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4952C6E4BF62CD1F4D3FEC /* PillSessionRegistry.swift */; };
 		F549CE8C087BA3DDDC436471 /* ClaudeSettingsFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BC7D04CE1031B507A2C8BBD /* ClaudeSettingsFile.swift */; };
+		F59BCA0198258034260BA491 /* SessionProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = B21C17772B04D3BDA9156C74 /* SessionProject.swift */; };
 		F5D6F8E2CA65AB16B487DDD0 /* IslandScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9466FDE02C9B3FB4EF01DFF8 /* IslandScreenGeometry.swift */; };
 		F6CA56F362902839EF9A3E2E /* PhoneAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60401D1023D17C3FD30D7113 /* PhoneAssets.xcassets */; };
 		F7162101509D8CAE59711602 /* VoiceSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD11C7925B0A7831BFC2199C /* VoiceSpeaker.swift */; };
@@ -551,6 +553,7 @@
 		AEF5BD66B00BB64BB80AF38C /* DemoEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoEngine.swift; sourceTree = "<group>"; };
 		B0BB902065581C2F5384547E /* IslandRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandRootView.swift; sourceTree = "<group>"; };
 		B0C9E43B21C2061DAB0DF253 /* DiffCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffCardView.swift; sourceTree = "<group>"; };
+		B21C17772B04D3BDA9156C74 /* SessionProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProject.swift; sourceTree = "<group>"; };
 		B2AA83D80260660475FAB052 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		B2FDED98F7F6C755A72C97A3 /* SafeWebURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeWebURL.swift; sourceTree = "<group>"; };
 		B328028D18F590D6680B8A2B /* VoiceEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEngine.swift; sourceTree = "<group>"; };
@@ -784,6 +787,7 @@
 				973338DCEE5375904867963B /* HookServer.swift */,
 				BB4952C6E4BF62CD1F4D3FEC /* PillSessionRegistry.swift */,
 				E05656B260ABC92A765A2AB5 /* RecapStore.swift */,
+				B21C17772B04D3BDA9156C74 /* SessionProject.swift */,
 				CD433317A25926F82E70703C /* StepKinds.swift */,
 				7B2F9D7804DE603B2196CDD6 /* TerminalTarget.swift */,
 				3A75A4F5CE71530F4DFDC11A /* TerminalTarget+AppKit.swift */,
@@ -1283,6 +1287,7 @@
 				9F43BE6E77E371FCEB7FE8BA /* ServiceDetailRunner.swift in Sources */,
 				694AB4504CD65662E1681E5C /* ServicePublisher.swift in Sources */,
 				0393CA5466F52252378F0346 /* ServiceSnapshot.swift in Sources */,
+				F59BCA0198258034260BA491 /* SessionProject.swift in Sources */,
 				9728564FCBF0334E68E9E6E7 /* SessionPublisher.swift in Sources */,
 				419F54676BE8AC4CA255EE43 /* SessionViews.swift in Sources */,
 				3A3DC74B6EE9D611CF68A8B9 /* SettingsIslandView.swift in Sources */,
@@ -1515,6 +1520,7 @@
 				4755AAC633DCE5DAA6D54A3C /* ServiceDetailRunner.swift in Sources */,
 				D092D0D597D1CBCE6B775B5E /* ServicePublisher.swift in Sources */,
 				1FE62D4EEA85FB25C17FDBA2 /* ServiceSnapshot.swift in Sources */,
+				467CE5DBCE9D581A16D10E70 /* SessionProject.swift in Sources */,
 				DE66BB6D18F467A7F4220CC3 /* SessionPublisher.swift in Sources */,
 				616C348A671A339F8BE64D77 /* SessionViews.swift in Sources */,
 				2097343E01EEAE151D9395B8 /* SettingsIslandView.swift in Sources */,

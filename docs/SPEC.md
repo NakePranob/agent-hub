@@ -47,7 +47,7 @@ Grille compact : pastilles Ø 9,5 autour du point (largeur − 27, hN/2), écart
 5. **Fermeture auto** : une fois ouverte, l'island se replie après **60 s sans activité** (mouvement de souris sur l'island, clic, frappe). Quitter l'island ne la ferme pas. Pendant les 10 dernières secondes, un trait de 2 pt en bas au centre (160 pt → 0, blanc 35 %) montre le compte à rebours. `Échap` ferme.
 6. **Louis absent** (aucun mouvement de souris depuis 3 min, réglable) → `hidden`, même avec des tâches. Au premier mouvement → retour `compact` si des tâches tournent.
 7. **Alertes** (permission, question, erreur) : l'island s'ouvre seule sur la vue de l'alerte, **même si Louis est absent**, et reste ouverte (pas de fermeture auto) jusqu'à sa réponse.
-8. **Terminé** : l'island s'ouvre sur la vue `finished` pendant 5,2 s, puis retire la tâche et se replie.
+8. **Terminé** : l'island s'ouvre sur la vue `overview`, dont la carte montre la fin du tour (réponse, « Open VS Code », coche verte) ; la pastille reste en `finished` 5,2 s. Un `StopFailure` fait de même avec l'état d'échec de la carte. Les vues `finished` et `error` n'ont plus de contenu.
 9. Plusieurs alertes en même temps : file d'attente, une à la fois, l'ordre d'arrivée.
 10. **Focus** : le gros bonhomme représente la tâche en focus (la dernière alerte, sinon la première qui travaille). Les autres tâches sont les mini-bonhommes. Cliquer un mini-bonhomme le met en focus.
 
@@ -72,20 +72,20 @@ rouge `rgba(244,80,94,.55)`, vert `rgba(52,211,153,.5)`, rose `rgba(244,114,182,
 | Vue | Hauteur | Bonhomme (x, Ø) | Contenu | Capture |
 |---|---|---|---|---|
 | `overview` | 196 | 64, 70 | une carte : session (ligne du haut, demande, boîte d'activité) puis rail des pastilles de 46 | 03 |
-| `empty` | 150 | 70, 62 | « Rien ne tourne pour l'instant. » + bouton « Demander à Claude » | 16 |
-| `approval` | 206 | 62, 56 | agent + « Claude Code veut lancer une commande », bloc code, Refuser (N), Toujours autoriser, Autoriser (Y) | 04 |
-| `question` | 196 | 62, 56 | agent + question (1/N) + options en boutons (single-select ou multi-select) + « Reply in terminal » ; bouton Send/Next pour multi-select ou multi-questions ; « Other… » → saisie libre | 05 |
-| `error` | 190 | 62, 58 | agent + outil, titre, détail en rouge `#FF8D97`, Relancer, Ouvrir dans n8n | 06 |
-| `finished` | 170 | 62, 58 | agent + résumé, Voir le terminal, OK | 07 |
-| `confused` | 160 | 76, 66 | « Trop de claques d'un coup. » | 08 |
+| `empty` | 150 | 70, 62 | « Rien ne tourne pour l'instant. » + Ask Claude, Choose a file… (sélecteur de fichier → `choose`), Character (Réglages → Character) | 16 |
+| `approval` | 150 | 62, 56 | ligne d'état (logo, projet, « wants to run a command » en orange, « 1/3 »), à quoi ça sert (la `description` de la commande ou le nom du fichier, `+N −M` pour une modification), bloc code (la commande ou le chemin), Deny · Always … View diff (Edit, MultiEdit, Write : la carte diff par-dessus) · Allow orange. Aucun raccourci clavier n'autorise : un clic seulement | 04 |
+| `question` | 196 | 62, 56 | ligne d'état (projet qui demande, « is asking » orange, 1/N, « Reply in terminal ») + intitulé orange en capitales + question 14 pt + options en puces (cadre orange une fois choisies, touche 1–4 affichée) ou, avec descriptions, en lignes à bouton radio ; Send/Next orange pour multi-select ; « Other… » → saisie libre | 05 |
+| `error` | — | — | plus de contenu : l'échec s'affiche sur la carte de l'overview (boîte rouge sur l'étape qui a échoué, « Failed · 0:41 », badge ✕, Open VS Code) | 06 |
+| `finished` | — | — | plus de contenu : la fin du tour s'affiche sur la carte de l'overview | 07 |
+| `confused` | 150 | 76, 66 | carré rose « ! » + « Trop de claques d'un coup. » + « Je reviens dans trois secondes. » | 08 |
 | `upload` | 176 | 140, 62 | zone pointillée, « Dépose tes fichiers ici », étiquettes | 09 |
 | `uploading` | 150 | sur la barre, Ø 28 | « Envoi de fichier » + %, barre verte, le bonhomme est le curseur de la barre | 10 |
-| `choose` | 170 | 60, 52 | « fichier est prêt. », Poser une question dessus, Envoyer par mail | 11 |
+| `choose` | 170 | 60, 52 | le fichier (icône, nom, taille · « What do you want to do with it? »), Ask a question, Send by email | 11 |
 | `mail` | 210 | 56, 46 | champs À, Objet (+ Message optionnel), Envoyer, Annuler | 12 |
 | `prompt` | 156 | 52, 44 | pastille de contexte + puce de modèle (clic → sélecteur fournisseur/modèle) + champ + micro + envoyer | 13 |
 | `searching` | 156 | 52, 44 | contexte + texte scintillant « Claude lit la page et cherche sur le web… » | 14 |
 | `result` | 262 (s'adapte au contenu, max 320) | 52, 44 | titre, 3 lignes de résultat, boutons | 15 |
-| `note` | 136 | 60, 50 | message court (mail envoyé, copié, j'ouvre n8n…), se ferme seul après 2 s | — |
+| `note` | 150 | 60, 50 | carré d'icône (ⓘ bleu, ✕ rouge après une erreur) + message court, se ferme seul | — |
 
 Centre vertical du bonhomme : 36 + (hauteur − 46) / 2, sauf `result` (y = 86).
 
@@ -104,7 +104,8 @@ Quand une étape du fil est une modification de fichier (préfixe interne `\u{E0
 
 ### Pastilles (overview)
 - Rail de 46 pt dans la carte de l'overview, après un filet : le logo des autres pastilles (`PillLogo` 22 pt, anneau d'état, badge), dans l'ordre du catalogue, écart 8, nom au survol. Trois tiennent ; au-delà, la dernière place devient « +N », avec un point de la couleur la plus urgente des pastilles cachées (attend, erreur, travaille).
-- « +N » ouvre par-dessus la carte gauche la liste « Apps » : toutes les autres pastilles, en pastilles nommées (3 colonnes, défilement au-delà de 2 rangées). Un clic met la pastille en focus et ferme la liste, comme ‹, Échap, « +N » ou la fermeture de l'île.
+- « +N » ouvre par-dessus la gauche de la carte la liste « Apps » (‹ rond, « Apps », nombre, « Manage » → Réglages → Active pills) : une tuile par pastille, 3 colonnes, 2 rangées visibles puis défilement. Tuile : logo 20 pt avec son anneau d'état et son badge, nom 12 pt semibold, et une ligne sur ce qu'elle a en cours (`AppStatusLine` : ce que fait l'agent, « Waiting for you », « 2 to review », « 3 unread », le morceau joué, le cours crypto, le dernier déploiement Vercel… sinon le sous-titre du catalogue). Survolées, Music et Spotify montrent lecture/pause et suivant. Un clic met la pastille en focus et ferme la liste, comme ‹, Échap, « +N » ou la fermeture de l'île.
+- **Liste des sessions** (chip « +2 · 2 projects » ou « +2 sessions » à côté du nom, avec le point de la plus urgente des autres) : regroupées par projet — le projet est le dépôt git du dossier (`SessionProject`, lu dans `.git`, un worktree compte pour son dépôt), sa couleur celle de `IslandConst.projectColors` ou une teinte tirée de son nom. Le nom du projet n'apparaît qu'une fois, ses autres sessions pendent d'un filet de sa couleur ; badge d'état (points, « ! », coche, croix, anneau vide), ce que fait la session ou sa dernière demande, sa branche quand celles du projet diffèrent, son temps, l'icône de l'app où elle tourne. Les projets avec une session qui attend passent en premier. Un seul projet : la branche prend sa place à gauche et le projet passe en haut à droite.
 
 ### Catalogue de pastilles
 Toutes les pastilles déclarées sont définies dans `PillCatalog.all` (source de vérité unique). Quatre catégories :

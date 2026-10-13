@@ -44,6 +44,8 @@ final class HookServer: @unchecked Sendable {
     /// One read source per queued request: it notices the client hanging up, and its
     /// cancel handler is the only place the request's fd is closed.
     private var approvalSources: [UUID: any DispatchSourceRead] = [:]
+    /// What each queued request is for, and the change it would make, by request id.
+    private var approvalExtras: [UUID: (detail: String, diff: FileDiff?)] = [:]
     private var pendingQuestionFD: Int32 = -1         // held open while user answers AskUserQuestion
     private var questionFDSource: (any DispatchSourceRead)? = nil  // monitors pendingQuestionFD
 
@@ -99,11 +101,13 @@ final class HookServer: @unchecked Sendable {
             return
         }
         state.updateTask(id: head.pillId, state: .approval)
+        let extras = approvalExtras[head.id]
         state.pendingApproval = ApprovalInfo(sessionId: head.sessionId, tool: head.tool,
                                               command: head.command, inputKey: head.inputKey,
                                               pillId: head.pillId, id: head.id,
                                               queueCount: approvals.count,
-                                              projectName: head.projectName)
+                                              projectName: head.projectName,
+                                              detail: extras?.detail ?? "", diff: extras?.diff)
         state.isPinned = true
         // Approval always forces the island open — the user must be able to respond.
         // Save the focus once, so it comes back when the last request is gone.
@@ -120,6 +124,7 @@ final class HookServer: @unchecked Sendable {
     @MainActor
     private func removeApproval(id: UUID, answer json: String? = nil, note: String? = nil) {
         guard let entry = approvals.remove(id: id) else { return }
+        approvalExtras.removeValue(forKey: id)
         let source = approvalSources.removeValue(forKey: id)
         if let json {
             let fd = entry.fd
@@ -636,6 +641,10 @@ final class HookServer: @unchecked Sendable {
 
         case "StopFailure":
             RecapStore.shared.stop(sessionId: recapSessionId)
+            updateTurn(id: agentId, session: sessionId) { turn in
+                turn?.endedAt = Date()
+                turn?.failed = true
+            }
             guard sessions.endTurn(pill: agentId, session: sessionId) == .pill else { break }
             state.updateTask(id: agentId, state: .error)
             SoundEngine.shared.play("error")
@@ -721,10 +730,13 @@ final class HookServer: @unchecked Sendable {
     // MARK: - Helpers
 
     @MainActor
-    private func expandIfNeeded(to view: IslandView) {
+    private func expandIfNeeded(to requested: IslandView) {
         let state = AppState.shared
+        // A turn's end and its failure are states of the overview card, but still alerts:
+        // they open the island like before.
+        let view: IslandView = requested == .finished || requested == .error ? .overview : requested
         let isAlert: Bool
-        switch view {
+        switch requested {
         case .approval, .question, .finished, .error, .confused: isAlert = true
         default: isAlert = false
         }
@@ -835,6 +847,7 @@ final class HookServer: @unchecked Sendable {
         let tool = payload["tool_name"] as? String ?? "Tool"
         let toolInput = payload["tool_input"] as? [String: Any] ?? [:]
         let inputKey = Self.approvalInputKey(toolInput)
+        let entryId = UUID()
         nbLog("PermissionRequest \(tool) [\(pillId)]")
 
         // AskUserQuestion is now handled via the dedicated --ask PreToolUse hook.
@@ -848,15 +861,21 @@ final class HookServer: @unchecked Sendable {
             return
         }
 
-        let command = toolInput["command"] as? String ?? tool
+        // File tools carry no command: the card shows their path, and the file name as what it is for.
+        let path = toolInput["file_path"] as? String ?? toolInput["notebook_path"] as? String
+        let command = toolInput["command"] as? String ?? path ?? tool
+        let detail = (toolInput["description"] as? String).map { oneLine($0, limit: 120) }
+            ?? path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+        approvalExtras[entryId] = (detail, buildFileDiff(tool: tool, input: toolInput, pillId: pillId))
 
         // Several requests can wait at once (several sessions or agents): they queue, the
         // card shows the oldest. Past the cap, the newest goes back to its own terminal.
-        let entry = QueuedApproval(id: UUID(), fd: fd, sessionId: sessionId, pillId: pillId,
+        let entry = QueuedApproval(id: entryId, fd: fd, sessionId: sessionId, pillId: pillId,
                                    projectName: projectName, cwd: cwd, tool: tool,
                                    command: command, inputKey: inputKey,
                                    hostApp: terminalHost?.bundleId, bundleId: bundleId)
         guard approvals.enqueue(entry) == .accepted else {
+            approvalExtras.removeValue(forKey: entryId)
             nbLog("PermissionRequest \(tool): \(ApprovalQueue.maxPending) already waiting, asked in the terminal")
             Task.detached { [weak self] in
                 self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
@@ -877,7 +896,6 @@ final class HookServer: @unchecked Sendable {
 
         // Monitor fd: if the agent closes the connection (answered in its own UI), drop the
         // request. The cancel handler closes the fd — never close it anywhere else.
-        let entryId = entry.id
         let capturedPillId = pillId
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         source.setEventHandler { [weak self] in
@@ -1008,7 +1026,9 @@ final class HookServer: @unchecked Sendable {
                    working: true, externalAgent: nil)
         state.updateTask(id: pillId, state: .question)
         publishLanes(pillId)
-        state.pendingQuestion = parsed
+        var question = parsed
+        question.projectName = projectName
+        state.pendingQuestion = question
         state.isPinned = true
         SoundEngine.shared.play("approval")
 

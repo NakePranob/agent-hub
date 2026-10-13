@@ -83,8 +83,9 @@ struct AgentIcon: View {
     }
 }
 
-/// Every pill but the focused one, with their names, over the left card. Opened by the
-/// right card's "+N"; a click focuses that pill, which closes the list.
+/// Every pill but the focused one, as tiles over the left of the card: each one's logo,
+/// name and what it has going on. Opened by the rail's "+N"; a click focuses that pill,
+/// which closes the list. "Manage" opens Settings → Active pills.
 struct AgentPillsView: View {
     @ObservedObject var state: AppState
     let onDismiss: () -> Void
@@ -94,47 +95,38 @@ struct AgentPillsView: View {
 
     var body: some View {
         let others = state.tasks.filter { $0.id != state.focusId }
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: onDismiss) {
-                HStack(spacing: 3) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 8, weight: .medium))
-                    Text("Apps")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(verbatim: "\(others.count)")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "#6B7079"))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 7) {
+                ListBackButton(action: onDismiss)
+                Text("Apps").font(.system(size: 14, weight: .semibold))
+                ListCount(text: "\(others.count)")
+                Spacer(minLength: 4)
+                Button {
+                    NotificationCenter.default.post(name: .openFullSettings, object: "activepills")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gearshape").font(.system(size: 10))
+                        Text("Manage")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#6B7079"))
                 }
-                .foregroundColor(Color(hex: "#F5F6F8"))
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .padding(.leading, 4)
-            .padding(.top, 6)
-            .padding(.bottom, 1)
+            .frame(height: 18)
 
             // Two rows show; more scroll.
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: columns, spacing: 4) {
                     ForEach(others) { task in
-                        #if !APPSTORE
-                        if task.id == "integration_music" {
-                            MusicPill(task: task, state: state, swapping: $swapping) { focus(task) }
-                        } else if task.id == "integration_spotify" {
-                            SpotifyPill(task: task, swapping: $swapping) { focus(task) }
-                        } else {
-                            AgentPill(task: task, state: state, swapping: $swapping) { focus(task) }
-                        }
-                        #else
-                        AgentPill(task: task, state: state, swapping: $swapping) { focus(task) }
-                        #endif
+                        AppTile(task: task, swapping: $swapping) { focus(task) }
                     }
                 }
-                .padding(4)   // room for the pills' hover scale and badges
             }
         }
         .padding(.leading, 104)
-        .padding(.trailing, 6)
-        .padding(.vertical, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onExitCommand { onDismiss() }
     }
@@ -144,6 +136,146 @@ struct AgentPillsView: View {
         state.setFocus(task.id)
         SoundEngine.shared.play("blip")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { swapping = false }
+    }
+}
+
+/// The round ‹ that closes a list over the card.
+struct ListBackButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(Color(hex: "#9C9CA3"))
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// One app in the list: its logo, ringed in its state and with its alert, its name, and a
+/// line on what it has going on. Music and Spotify show their controls on hover.
+struct AppTile: View {
+    let task: AgentTask
+    @Binding var swapping: Bool
+    let onTap: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            PillLogo(task: task, size: 20)
+                .overlay(alignment: .topTrailing) {
+                    if let badge = task.pillBadge {
+                        PillBadgeView(badge: badge, taskColor: task.color)
+                            .scaleEffect(0.7)
+                            .offset(x: 5, y: -5)
+                    }
+                }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(task.id == "integration_claude" ? ClaudeHost.pillName(hostApp: task.hostApp) : task.name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "#F5F6F8"))
+                Text(AppStatusLine.text(for: task))
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(hex: "#9C9CA3"))
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            if hovered { controls }
+        }
+        .padding(.leading, 7)
+        .padding(.trailing, 6)
+        .frame(height: 30)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.white.opacity(hovered ? 0.09 : 0.05)))
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+        .onHover { h in
+            guard !swapping else { return }
+            withAnimation(.easeOut(duration: 0.15)) { hovered = h }
+        }
+    }
+
+    @ViewBuilder private var controls: some View {
+        #if !APPSTORE
+        if task.id == "integration_music", MusicController.shared.trackTitle != nil {
+            HStack(spacing: 2) {
+                MusicControlButton(icon: AppState.shared.musicPlaying ? "pause.fill" : "play.fill", color: task.color) {
+                    MusicController.shared.playPause()
+                }
+                MusicControlButton(icon: "forward.fill", color: task.color) { MusicController.shared.nextTrack() }
+            }
+        } else if task.id == "integration_spotify", SpotifyController.shared.track != nil {
+            HStack(spacing: 2) {
+                MusicControlButton(icon: SpotifyController.shared.isPlaying ? "pause.fill" : "play.fill", color: task.color) {
+                    SpotifyController.shared.playPause()
+                }
+                MusicControlButton(icon: "forward.fill", color: task.color) { SpotifyController.shared.nextTrack() }
+            }
+        }
+        #endif
+    }
+}
+
+/// What a pill has going on, in a few words, for its tile: "2 to review", "3 unread", the
+/// song playing, what the agent is doing. Otherwise the catalog's line about it.
+@MainActor
+enum AppStatusLine {
+    static func text(for task: AgentTask) -> String {
+        let state = AppState.shared
+        switch task.state {
+        case .approval, .question: return String(localized: "Waiting for you")
+        case .error:               return String(localized: "Failed")
+        case .working, .thinking, .searching:
+            return ActivityBox.current(task).flatMap(StepKind.of)?.activity ?? String(localized: "Working")
+        default: break
+        }
+        switch task.id {
+        case "integration_github":
+            if let pulse = state.githubPulse {
+                if !pulse.toReview.isEmpty { return String(localized: "\(pulse.toReview.count) to review") }
+                if !pulse.myPRs.isEmpty { return String(localized: "\(pulse.myPRs.count) open PRs") }
+                return String(localized: "All clear")
+            }
+        case "integration_vercel":
+            if let last = state.vercelDeployments.first {
+                return "\(last.state.capitalized) · \(relative(last.createdAt))"
+            }
+        case "integration_resend":
+            if let total = state.resendTotal { return String(localized: "\(total) emails") }
+        case "integration_calcom":
+            if state.calcomLoaded { return String(localized: "\(state.calcomBookings.count) upcoming") }
+        case "integration_notion":
+            if state.notionLoaded { return String(localized: "\(state.notionPages.count) pages") }
+        case "integration_crypto":
+            if let quote = CryptoController.shared.quotes.first {
+                let price = quote.price.formatted(.number.precision(.fractionLength(0...2)))
+                return "\(quote.symbol) \(price) " + String(format: "%+.1f%%", quote.change)
+            }
+        #if !APPSTORE
+        case "integration_music":
+            if let title = MusicController.shared.trackTitle {
+                return [title, MusicController.shared.artist].compactMap { $0 }.joined(separator: " · ")
+            }
+        case "integration_spotify":
+            if let track = SpotifyController.shared.track { return "\(track.title) · \(track.artist)" }
+        case "integration_mail":
+            if let unread = MailController.shared.unreadCount {
+                return unread == 0 ? String(localized: "No unread mail") : String(localized: "\(unread) unread")
+            }
+        #endif
+        default: break
+        }
+        if let provider = ChatProvider(pillID: task.id) { return String(localized: "Chat with \(provider.displayName)") }
+        return PillCatalog.definition(for: task.id)?.subtitle ?? ""
+    }
+
+    private static func relative(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: date, relativeTo: Date())
     }
 }
 

@@ -129,7 +129,7 @@ struct OverviewView: View {
             let glow = SessionCardBody.glow(for: agent)
             ZStack {
                 // A turn just over lights the card green from below, as long as the pill shows it.
-                CardBackground(wash: agent?.state == .finished ? .green : nil)
+                CardBackground(wash: agent?.state == .finished ? .green : agent?.state == .error ? .red : nil)
                 // The step's colour, rising from the robot's side.
                 RadialGradient(colors: [(glow ?? .clear).opacity(0.18), .clear],
                                center: UnitPoint(x: 0.08, y: 0.5), startRadius: 0, endRadius: 280)
