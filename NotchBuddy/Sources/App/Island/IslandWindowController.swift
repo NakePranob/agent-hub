@@ -391,22 +391,27 @@ final class IslandWindowController: NSWindowController {
     private static let fastPoll: TimeInterval = 1.0 / 60.0
     private static let nearPoll: TimeInterval = 1.0 / 20.0
     private static let idlePoll: TimeInterval = 1.0 / 8.0
+    /// While the screen is off: only a look at whether it is back.
+    private static let screenOffPoll: TimeInterval = 2
     private var pollInterval: TimeInterval = 0
 
-    /// Screen asleep or locked: nothing to hover, the poll stops entirely.
+    /// Screen asleep or locked: nothing to hover, the poll only checks every 2 s whether the
+    /// screen is back. It used to stop entirely and wait for a wake or unlock notification;
+    /// when one came before the other's pause, or not at all, it never started again and the
+    /// island stayed click-through (every click went to the app underneath).
     private var screenOff = false
 
     private func startPolling(interval: TimeInterval = IslandWindowController.fastPoll) {
         frameTimer?.invalidate()
         frameTimer = nil
         pollInterval = interval
-        guard !screenOff else { return }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             // Scheduled on the main run loop: already on the main actor, no Task per tick.
             MainActor.assumeIsolated { self?.pollFrame() }
         }
         // A few ms of slack lets macOS group our wakeups with others; hover is unaffected.
-        timer.tolerance = interval == Self.idlePoll ? 0.04 : interval == Self.nearPoll ? 0.01 : 0.004
+        timer.tolerance = interval == Self.screenOffPoll ? 0.5
+            : interval == Self.idlePoll ? 0.04 : interval == Self.nearPoll ? 0.01 : 0.004
         RunLoop.main.add(timer, forMode: .common)
         frameTimer = timer
     }
@@ -430,6 +435,12 @@ final class IslandWindowController: NSWindowController {
     }
 
     private func pollFrame() {
+        if screenOff {
+            // Back on even though no wake or unlock notification said so.
+            guard Self.screenIsOn() else { return }
+            screenOff = false
+            startPolling(interval: Self.idlePoll)
+        }
         guard let panel = window as? IslandPanel else { return }
 
         let mouse = NSEvent.mouseLocation
@@ -527,8 +538,15 @@ final class IslandWindowController: NSWindowController {
 
     private func pausePollingForScreenOff() {
         screenOff = true
-        frameTimer?.invalidate()
-        frameTimer = nil
+        startPolling(interval: Self.screenOffPoll)
+    }
+
+    /// The main display awake and the session unlocked, read from the system rather than
+    /// from the notifications.
+    private static func screenIsOn() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        let locked = session?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        return CGDisplayIsAsleep(CGMainDisplayID()) == 0 && !locked
     }
 
     private func resumePollingAfterScreenOff() {
@@ -968,8 +986,10 @@ final class IslandWindowController: NSWindowController {
                     self.hideDragGhost()        // resets isDraggingBot, closes highlight panel
                     DesktopMochiController.shared.install(ghostPanel: ghost, at: mouse)
                 } else {
-                    // Drop back in notch zone → Mochi returns to notch
+                    // Dropped back on the notch: a click on the robot that moved a few points,
+                    // not a move. Open the island, as the click would have.
                     self.hideDragGhost()
+                    self.openFromClick()
                 }
                 #else
                 let inNotchZoneAS = self.window?.frame.contains(mouse) == true
@@ -980,6 +1000,7 @@ final class IslandWindowController: NSWindowController {
                     DesktopMochiController.shared.install(ghostPanel: ghost, at: mouse)
                 } else {
                     self.hideDragGhost()
+                    self.openFromClick()
                 }
                 #endif
             }
@@ -994,14 +1015,7 @@ final class IslandWindowController: NSWindowController {
                     finishDrag()
                 } else {
                     self.attachDragStart = nil
-                    if hadPendingClick && self.state.mode != .expanded {
-                        if self.fsm.state == .home {
-                            // FSM already thinks it's open (e.g. the view folded it): just reopen.
-                            self.expand(to: self.defaultView())
-                        } else {
-                            self.fsm.click()   // FSM petit/hidden→home; onTransition calls expand(to:)
-                        }
-                    }
+                    if hadPendingClick { self.openFromClick() }
                 }
             }
             return event
@@ -1288,6 +1302,17 @@ final class IslandWindowController: NSWindowController {
     }
 
     // MARK: - Bot hit test (for slap trigger)
+
+    /// A click on the folded island opens it.
+    private func openFromClick() {
+        guard state.mode != .expanded else { return }
+        if fsm.state == .home {
+            // FSM already thinks it's open (e.g. the view folded it): just reopen.
+            expand(to: defaultView())
+        } else {
+            fsm.click()   // FSM petit/hidden→home; onTransition calls expand(to:)
+        }
+    }
 
     private func isBotHit(_ windowPoint: CGPoint) -> Bool {
         let s = AppState.shared
