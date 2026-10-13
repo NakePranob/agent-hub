@@ -1,5 +1,5 @@
 // Mochi on the desktop — the pure logic, port of
-// NotchBuddy/Sources/App/DesktopMochiLogic.swift and of the life cycle in
+// NotchBuddy/Sources/App/Mochi/DesktopMochiLogic.swift and of the life cycle in
 // DesktopMochiController (DesktopMochi.swift). No DOM, no Tauri: the island
 // wires it up in src/island/desktop.ts, the desktop window draws him in
 // src/desktop/main.ts, and Rust owns the window (src-tauri/src/desktop.rs).

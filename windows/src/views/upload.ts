@@ -1,5 +1,5 @@
 // Drop zone, upload progress and the "what do you want to do with it" card —
-// ports of UploadView / UploadingView / ChooseView from IslandViewContent.swift.
+// ports of UploadView / UploadingView / ChooseView from UploadViews.swift and StatusViews.swift.
 //
 // Sending a file by email is not in the Windows v1, so `choose` offers the one
 // action the spec asks for: ask a question about it.

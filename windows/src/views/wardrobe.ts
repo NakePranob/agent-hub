@@ -1,4 +1,4 @@
-// Wardrobe view — port of WardrobeView (IslandViewContent.swift). Opened with a
+// Wardrobe view — port of WardrobeView (Mochi/WardrobeView.swift). Opened with a
 // right-click on Mochi or from the tray menu. Resting the pointer on a button
 // tries the outfit on Mochi; a click keeps it.
 

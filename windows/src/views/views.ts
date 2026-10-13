@@ -1,4 +1,4 @@
-// Island views — DOM ports of IslandViewContent.swift. Paddings, font sizes,
+// Island views — DOM ports of the views in Sources/App/Island/. Paddings, font sizes,
 // colours and wording are copied from the Swift views so both platforms read
 // identically.
 

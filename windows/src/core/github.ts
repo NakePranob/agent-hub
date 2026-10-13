@@ -1,6 +1,6 @@
 // GitHub pulse and contribution grid — the pure half of the GitHub card.
 // Port of the helpers around GitHubPulseCardView, GitHubDetailView and
-// GitHubActivityDetailContent (IslandViewContent.swift), GitHubActivity.swift and
+// GitHubActivityDetailContent (GitHubViews.swift), GitHubActivity.swift and
 // AppState.handleGitHubEvents. No DOM here, so all of it is tested in Node.
 //
 // Parsing and alert detection happen in Rust (src-tauri/src/github.rs); this

@@ -1,6 +1,6 @@
 // The GitHub card once the pulse is in — DOM ports of GitHubPulseCardView,
 // GitHubDetailView, GitHubPRRowView, GitHubRepoCIRowView and
-// GitHubActivityDetailContent (IslandViewContent.swift). Sizes, colours and
+// GitHubActivityDetailContent (GitHubViews.swift). Sizes, colours and
 // wording follow the Swift views; the logic lives in core/github.ts.
 //
 // Without a pulse (no token scope for it yet, or the first poll still to come)

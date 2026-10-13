@@ -6,7 +6,7 @@
 // lives here is only *what* changes in each agent's config, and the command
 // line that starts the relay in the shell that agent uses.
 //
-// Formats and paths follow the Mac app (NotchBuddy/Sources/App/HookServer.swift)
+// Formats and paths follow the Mac app (NotchBuddy/Sources/App/Agents/HookServer.swift)
 // so a config shared between machines (dotfiles) looks the same everywhere.
 
 use std::path::{Path, PathBuf};

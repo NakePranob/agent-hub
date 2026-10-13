@@ -1,5 +1,5 @@
 // Integration cards shown in the overview's left card — DOM ports of
-// IntegrationCardView and friends from IslandViewContent.swift.
+// IntegrationCardView (IntegrationCardView.swift) and the other *Views.swift files of Sources/App/Integrations/.
 //
 // Cal.com is the one simplification: macOS shows a three-level calendar
 // (month → day → booking); here it is the list of upcoming bookings.
