@@ -7,6 +7,8 @@ import SwiftUI
 struct PillLogo: View {
     let task: AgentTask
     var size: CGFloat
+    /// The state ring; off where the card already says what the agent is doing.
+    var ringed = true
     @Environment(\.islandViewActive) private var active
 
     var body: some View {
@@ -25,7 +27,7 @@ struct PillLogo: View {
             }
         }
         .frame(width: size, height: size)
-        .overlay(ring)
+        .overlay { if ringed { ring } }
     }
 
     /// Working: an arc running round. Waiting for you, an error, done: a ring in that mood's colour.

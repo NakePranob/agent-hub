@@ -55,19 +55,17 @@ struct OverviewView: View {
     var agent: AgentTask? { state.focusTask.map(state.cardTask) }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Left card: title row + ticker below + ↗ button overlay
+        // One card: the focused pill on the left, the other pills' rail on the right.
+        HStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                // A turn just over lights the card green from below, as long as the pill shows it.
-                CardBackground(wash: agent?.state == .finished ? .green : nil)
-                    .animation(.easeInOut(duration: 0.4), value: agent?.state)
+                Color.clear
 
                 // Title row + step wheel (or integration card)
                 if let agent = agent {
                     if agent.isIntegration {
                         IntegrationCardView(task: agent, showingDetail: $showingN8nDetail, onDiffTap: { diffIdx in
                             withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
-                        }, onSessionList: openSessionList)
+                        }, onSessionList: openSessionList, onOpen: { openApp(agent) })
                     } else {
                         SessionCardBody(task: agent, subtitle: {
                             switch agent.source {
@@ -77,14 +75,14 @@ struct OverviewView: View {
                             }
                         }(), onSessionList: openSessionList, onDiffTap: { diffIdx in
                             withAnimation(.easeIn(duration: 0.16)) { activeDiffId = diffIdx }
-                        })
+                        }, onOpen: { openApp(agent) })
                     }
                 }
 
                 // Plan detail overlays on top of normal content (GitHub build, home view only)
                 #if !APPSTORE
                 if state.showingPlanDetail {
-                    CardBackground(wash: nil)
+                    CardMaterial.fill   // square: the card's shape clips it
                     Group {
                         if state.planDetailIsCodex {
                             CodexPlanCardView(usage: state.codexPlanUsage)
@@ -112,14 +110,14 @@ struct OverviewView: View {
                 if let diffId = activeDiffId,
                    let task = agent,
                    let diff = state.sessionDiffs[task.id]?.first(where: { $0.id == diffId }) {
-                    CardBackground(wash: nil)
+                    CardMaterial.fill   // square: the card's shape clips it
                     DiffCardView(diff: diff, onDismiss: { activeDiffId = nil })
                         .transition(.opacity)
                 }
 
                 // Session list — every session behind the pill, from the session row's "+N"
                 if showingSessions, let task = agent, let lanes = state.sessionLanes[task.id] {
-                    CardBackground(wash: nil)
+                    CardMaterial.fill   // square: the card's shape clips it
                     SessionListView(pillId: task.id, lanes: lanes,
                                     shownId: state.shownLane(of: task.id)?.id,
                                     onDismiss: {
@@ -130,7 +128,7 @@ struct OverviewView: View {
 
                 // Every other pill, from the right card's "+N"
                 if showingApps {
-                    CardBackground(wash: nil)
+                    CardMaterial.fill   // square: the card's shape clips it
                     AgentPillsView(state: state, onDismiss: {
                         withAnimation(.easeIn(duration: 0.16)) { showingApps = false }
                     })
@@ -159,14 +157,30 @@ struct OverviewView: View {
                 }
             }
 
-            // Right card: the other pills' logos, "+N" for the rest
-            CardBackground(wash: nil) {
-                AgentColumnView(state: state, showingAll: showingApps, onMore: {
-                    withAnimation(.easeIn(duration: 0.16)) { showingApps.toggle() }
-                })
-            }
-            .frame(width: 36)
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 1)
+                .padding(.vertical, 14)
+
+            // The other pills' logos, "+N" for the rest
+            AgentColumnView(state: state, showingAll: showingApps, onMore: {
+                withAnimation(.easeIn(duration: 0.16)) { showingApps.toggle() }
+            })
+            .frame(width: 46)
         }
+        .background {
+            let glow = SessionCardBody.glow(for: agent)
+            ZStack {
+                // A turn just over lights the card green from below, as long as the pill shows it.
+                CardBackground(wash: agent?.state == .finished ? .green : nil)
+                // The step's colour, rising from the robot's side.
+                RadialGradient(colors: [(glow ?? .clear).opacity(0.18), .clear],
+                               center: UnitPoint(x: 0.08, y: 0.5), startRadius: 0, endRadius: 280)
+            }
+            .animation(.easeInOut(duration: 0.5), value: glow)
+            .animation(.easeInOut(duration: 0.4), value: agent?.state)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22))
         .onChange(of: state.focusId) { _, new in
             showingN8nDetail = false
             activeDiffId = nil
@@ -204,6 +218,12 @@ struct OverviewView: View {
 
     private func openSessionList() {
         withAnimation(.easeIn(duration: 0.16)) { showingSessions = true }
+    }
+
+    /// A finished turn's "Open …": the session's app, then the island folds out of the way.
+    private func openApp(_ task: AgentTask?) {
+        openAgentTarget(task)
+        NotificationCenter.default.post(name: .islandCollapse, object: nil)
     }
 
     private func openAgentTarget(_ task: AgentTask?) {
@@ -1777,6 +1797,7 @@ struct IntegrationCardView: View {
     @Binding var showingDetail: Bool
     var onDiffTap: ((Int) -> Void)? = nil
     var onSessionList: () -> Void = {}
+    var onOpen: () -> Void = {}
     @ObservedObject private var appState = AppState.shared
     @State private var githubDetailSection: GitHubDetailSection = .myPRs
     #if !APPSTORE
@@ -2119,7 +2140,7 @@ struct IntegrationCardView: View {
         } else if agentSessionActive {
             SessionCardBody(task: task,
                             subtitle: PillCatalog.definition(for: task.id)?.sessionSubtitle ?? "Agent",
-                            onSessionList: onSessionList, onDiffTap: onDiffTap)
+                            onSessionList: onSessionList, onDiffTap: onDiffTap, onOpen: onOpen)
         } else {
             // Idle / not connected view — slides in from left when returning from detail
             VStack(alignment: .leading, spacing: 6) {
@@ -3820,60 +3841,89 @@ struct SessionListView: View {
     }
 }
 
-// MARK: - Session card (what was asked, then the step wheel)
+// MARK: - Session card (the session, what was asked, what the agent is doing)
 
-/// The left card of a pill with a live session: the session and what was asked on top,
-/// then the wheel — the step before, the step now, and what the turn has done so far.
+/// The left of the card for a pill with a live session: the session on top, then what was
+/// asked, then what the agent is doing in a box whose bottom edge runs while it works —
+/// or, once the turn is over, its answer, the prompt moving up beside the session.
 struct SessionCardBody: View {
     let task: AgentTask
     /// Shown until something is asked ("Claude Code", "Agent").
     let subtitle: String
     var onSessionList: () -> Void = {}
     var onDiffTap: ((Int) -> Void)? = nil
+    var onOpen: () -> Void = {}
     @ObservedObject private var appState = AppState.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
+        let prompt = task.turn?.prompt ?? ""
+        let done = !Self.busy(task) && task.turn?.endedAt != nil
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                PillLogo(task: task, size: 14, ringed: false)
                 if let lanes = appState.sessionLanes[task.id] {
                     SessionLaneRow(pillId: task.id, lanes: lanes,
                                    shownId: appState.shownLane(of: task.id)?.id,
                                    onMore: onSessionList)
                         .layoutPriority(1)
                 } else {
-                    Circle()
-                        .fill(Color(hex: task.color))
-                        .frame(width: 7, height: 7)
                     Text(task.name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Color(hex: "#F5F6F8"))
                         .lineLimit(1).truncationMode(.tail)
                         .layoutPriority(1)
                 }
-                let prompt = task.turn?.prompt ?? ""
-                Text(prompt.isEmpty ? subtitle : "“\(prompt)”")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "#8E939C"))
-                    .lineLimit(1).truncationMode(.tail)
-                    .help(prompt)
+                if done || prompt.isEmpty {
+                    Text(prompt.isEmpty ? subtitle : prompt)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "#9C9CA3"))
+                        .lineLimit(1).truncationMode(.tail)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.white.opacity(0.07)))
+                        .help(prompt)
+                }
                 Spacer(minLength: 4)
                 if let turn = task.turn {
                     TurnClock(turn: turn, running: task.state != .idle)
                 }
             }
-            .padding(.top, 6)
-            .padding(.leading, 108)
-            .padding(.trailing, 36)
+            .frame(height: 18)
+            .padding(.trailing, 26)   // the ↗ button
 
-            StepWheel(task: task, onDiffTap: onDiffTap)
+            if !done, !prompt.isEmpty {
+                Text(prompt)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(Color(hex: "#9C9CA3"))
+                    .lineLimit(1).truncationMode(.tail)
+                    .padding(.leading, 8)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.18)).frame(width: 2)
+                    }
+                    .help(prompt)
+            }
+
+            ActivityBox(task: task, busy: Self.busy(task), done: done, onDiffTap: onDiffTap, onOpen: onOpen)
                 .id(appState.shownLane(of: task.id)?.id)  // another session: start over
-                .frame(height: 64)
-                .padding(.top, 2)
-                .padding(.leading, 108)
-                .padding(.trailing, 12)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.top, 4)
+        .padding(.leading, 108)
+        .padding(.trailing, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    static func busy(_ task: AgentTask) -> Bool {
+        task.state == .working || task.state == .thinking || task.state == .searching
+    }
+
+    /// The light the card takes from the robot's side: the step's colour while the agent
+    /// works, green once the turn is over.
+    static func glow(for task: AgentTask?) -> Color? {
+        guard let task, task.turn != nil else { return nil }
+        if busy(task) {
+            guard let step = ActivityBox.current(task) else { return StepKind.plan.tint }
+            return StepKind.of(step)?.tint
+        }
+        return task.turn?.endedAt != nil ? ActivityBox.doneGreen : nil
     }
 }
 
@@ -3887,14 +3937,15 @@ struct TurnClock: View {
         Group {
             if let end = turn.endedAt {
                 Text(verbatim: "\(String(localized: "Done")) · \(Self.format(end.timeIntervalSince(turn.startedAt)))")
+                    .foregroundColor(ActivityBox.doneGreen)
             } else if running {
                 TimelineView(.animation(minimumInterval: 1, paused: !active)) { tl in
                     Text(verbatim: Self.format(tl.date.timeIntervalSince(turn.startedAt)))
                 }
+                .foregroundColor(Color(hex: "#6B7079"))
             }
         }
-        .font(.system(size: 11).monospacedDigit())
-        .foregroundColor(Color(hex: "#6B7079"))
+        .font(.system(size: 12).monospacedDigit())
         .fixedSize()
     }
 
@@ -3905,182 +3956,154 @@ struct TurnClock: View {
     }
 }
 
-/// The turn's steps as a wheel: the one before above, small and dim; the one now in the
-/// middle, its icon in colour; the turn's summary below. A new step rolls the wheel up.
-struct StepWheel: View {
+/// What the agent is doing, in a soft box: its kind's icon, the verb, what it acts on and
+/// how many steps the turn has taken. The bottom edge runs in the kind's colour while it
+/// works. Once the turn is over, the box holds the answer behind a check.
+struct ActivityBox: View {
     let task: AgentTask
-    var onDiffTap: ((Int) -> Void)? = nil
-
-    struct Line: Identifiable, Equatable { let id: Int; let text: String }
-
-    /// This turn's steps, numbered from its start so a row keeps its identity when the
-    /// log drops its oldest line. Without a turn (an agent that never sends its prompt), all.
-    static func lines(of task: AgentTask) -> [Line] {
-        let steps = task.steps
-        let count = task.turn.map { min($0.stepCount, steps.count) } ?? steps.count
-        let first = (task.turn?.stepCount ?? steps.count) - count
-        return steps.suffix(count).enumerated().map { Line(id: first + $0.offset, text: $0.element) }
-    }
-
-    var body: some View {
-        let lines = Array(Self.lines(of: task).suffix(2))
-        let busy = task.state == .working || task.state == .thinking || task.state == .searching
-        let done = !busy && task.turn?.endedAt != nil
-        ZStack(alignment: .leading) {
-            if lines.isEmpty, task.turn != nil, busy {
-                StepWheelRow(text: String(localized: "Thinking…"), isNow: true, busy: true, done: false,
-                             thinking: true)
-                    .transition(.opacity)
-            }
-            ForEach(Array(lines.enumerated()), id: \.element.id) { i, line in
-                let isNow = i == lines.count - 1
-                StepWheelRow(text: line.text, isNow: isNow, busy: busy, done: done,
-                             onDiffTap: line.text.parseDiffStep().flatMap { dp in onDiffTap.map { tap in { tap(dp.diffId) } } })
-                    .scaleEffect(isNow ? 1 : 0.84, anchor: .leading)
-                    .offset(y: isNow ? 0 : -21)
-                    .opacity(isNow ? 1 : 0.6)
-                    .transition(.asymmetric(insertion: .offset(y: 14).combined(with: .opacity),
-                                            removal: .offset(y: -14).combined(with: .opacity)))
-            }
-            if let turn = task.turn {
-                TurnSummary(turn: turn)
-                    .offset(y: 21)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .clipped()
-        .mask(LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0),
-                .init(color: .black, location: 0.1),
-                .init(color: .black, location: 0.92),
-                .init(color: .clear, location: 1)
-            ],
-            startPoint: .top, endPoint: .bottom
-        ))
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: lines.last?.id)
-    }
-}
-
-/// One line of the wheel: its kind's icon, then the verb and what it acts on.
-struct StepWheelRow: View {
-    let text: String
-    let isNow: Bool
-    /// The agent is at work: the line now shimmers.
     let busy: Bool
-    /// The turn is over: the line now is how it ended, behind a check.
     let done: Bool
-    var thinking = false
-    var onDiffTap: (() -> Void)? = nil
+    var onDiffTap: ((Int) -> Void)? = nil
+    var onOpen: () -> Void = {}
+
+    static let doneGreen = Color(hex: "#30D158")
+
+    /// This turn's latest step; nil before the first one. Without a turn (an agent that
+    /// never sends its prompt), the log's latest.
+    static func current(_ task: AgentTask) -> String? {
+        let count = task.turn.map { min($0.stepCount, task.steps.count) } ?? task.steps.count
+        return count > 0 ? task.steps.last : nil
+    }
 
     var body: some View {
-        let kind = StepKind.of(text)
-        HStack(spacing: 7) {
-            icon(kind)
-            content(kind)
-        }
-        .frame(height: 22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { onDiffTap?() }
-    }
-
-    private var answered: Bool { isNow && done }
-    private var shimmers: Bool { isNow && busy }
-
-    @ViewBuilder private func icon(_ kind: StepKind?) -> some View {
-        let symbol = answered ? "checkmark" : thinking ? "sparkle" : kind?.symbol ?? "chevron.right"
-        let tint = answered ? Color(hex: RobotMood.done.glowHex)
-            : thinking ? StepKind.plan.tint : kind?.tint ?? Color(hex: "#8E939C")
-        if isNow {
+        let step = Self.current(task)
+        let kind = step.flatMap(StepKind.of)
+        let tint = done ? Self.doneGreen : step == nil ? StepKind.plan.tint : kind?.tint ?? Color(hex: "#8E939C")
+        let symbol = done ? "checkmark" : step == nil ? "sparkle" : kind?.symbol ?? "chevron.right"
+        HStack(spacing: 9) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10.5, weight: .semibold))
                 .foregroundColor(tint)
-                .frame(width: 20, height: 20)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tint.opacity(0.16)))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(tint.opacity(0.28), lineWidth: 1))
-        } else {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Color(hex: "#6B7079"))
-                .frame(width: 20, height: 20)
+                .frame(width: 22, height: 22)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(tint.opacity(0.2)))
+            if done {
+                // The answer, when the turn ended on one; otherwise just that it is done.
+                let answer = step.flatMap { StepKind.of($0) == nil ? $0 : nil } ?? String(localized: "Done")
+                Text(answer)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(Color(hex: "#F5F6F8"))
+                    .lineLimit(2).lineSpacing(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                openButton
+            } else {
+                content(step, kind)
+                Spacer(minLength: 4)
+                if let n = task.turn?.tally.values.reduce(0, +), n > 0 {
+                    Text(verbatim: "step \(n)")
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundColor(Color(hex: "#6B7079"))
+                        .fixedSize()
+                }
+            }
         }
+        .padding(.leading, 7)
+        .padding(.trailing, 12)
+        .padding(.vertical, done ? 7 : 0)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+        .overlay(alignment: .bottom) {
+            if busy { RunningEdge(tint: tint) }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let dp = step?.parseDiffStep() { onDiffTap?(dp.diffId) }
+        }
+        .animation(.easeInOut(duration: 0.25), value: step)
     }
 
-    @ViewBuilder private func content(_ kind: StepKind?) -> some View {
-        let detailColor = Color(hex: isNow ? "#C9CDD4" : "#6B7079")
-        if let dp = text.parseDiffStep() {
+    /// Back to the app the session runs in: VS Code, its terminal, Cursor…
+    private var openButton: some View {
+        let app = task.id == "integration_claude" ? ClaudeHost.name(for: task.hostApp)
+            : PillCatalog.definition(for: task.id)?.name ?? task.name
+        return Button(action: onOpen) {
+            HStack(spacing: 5) {
+                PillLogo(task: task, size: 13, ringed: false)
+                Text(String(localized: "Open \(app)"))
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(.black)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(Capsule().fill(Color.white))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    @ViewBuilder private func content(_ step: String?, _ kind: StepKind?) -> some View {
+        let detail = Color(hex: "#9C9CA3")
+        if let step, let dp = step.parseDiffStep() {
+            verb(StepKind.edit.activity)
             Text(dp.filename)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(detailColor)
+                .font(.system(size: 12.5))
+                .foregroundColor(detail)
                 .lineLimit(1).truncationMode(.middle)
             if dp.added > 0 {
-                Text(verbatim: "+\(dp.added)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color(hex: "#22C55E"))
-                    .fixedSize()
+                Text(verbatim: "+\(dp.added)").font(.system(size: 11.5, weight: .medium).monospacedDigit())
+                    .foregroundColor(Self.doneGreen).fixedSize()
             }
             if dp.removed > 0 {
-                Text(verbatim: "−\(dp.removed)")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(Color(hex: "#F4505E"))
-                    .fixedSize()
+                Text(verbatim: "−\(dp.removed)").font(.system(size: 11.5, weight: .medium).monospacedDigit())
+                    .foregroundColor(Color(hex: "#FF453A")).fixedSize()
             }
-        } else if kind != nil, !answered {
-            // "Runs · git status": the verb, then what it acts on in monospace.
-            let parts = text.components(separatedBy: " · ")
-            label(parts[0], weight: .semibold).fixedSize()
-            if parts.count > 1 {
-                Text(parts.dropFirst().joined(separator: " · "))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(detailColor)
-                    .lineLimit(1).truncationMode(.tail)
+        } else if let step {
+            // "Runs · Build the app": the kind's verb (or the step's own), then what it acts on.
+            let parts = step.components(separatedBy: " · ")
+            if parts.count > 1 || kind != nil {
+                verb(kind?.activity ?? parts[0])
+                if parts.count > 1 {
+                    Text(parts.dropFirst().joined(separator: " · "))
+                        .font(.system(size: 12.5))
+                        .foregroundColor(detail)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+            } else {
+                verb(step)   // a question, a line of its own
             }
         } else {
-            // A prompt, an answer, a question, an MCP tool.
-            label(text, weight: answered ? .semibold : .medium)
+            verb(String(localized: "Thinking"))
         }
     }
 
-    @ViewBuilder private func label(_ string: String, weight: Font.Weight) -> some View {
-        let font = Font.system(size: 13, weight: weight)
-        if shimmers {
-            TickerShimmerText(text: string, font: font)
-        } else {
-            Text(string)
-                .font(font)
-                .foregroundColor(Color(hex: isNow ? "#F5F6F8" : "#8E939C"))
-                .lineLimit(1).truncationMode(.tail)
-        }
+    private func verb(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(Color(hex: "#F5F6F8"))
+            .lineLimit(1)
+            .layoutPriority(1)
     }
 }
 
-/// What the turn has done so far: the files it changed, then each kind of step it took.
-struct TurnSummary: View {
-    let turn: AgentTurn
+/// The activity box's bottom edge while the agent works: a light running across.
+struct RunningEdge: View {
+    let tint: Color
+    @Environment(\.islandViewActive) private var active
 
     var body: some View {
-        HStack(spacing: 7) {
-            Color.clear.frame(width: 20, height: 1)   // under the wheel's icons
-            if !turn.files.isEmpty {
-                HStack(spacing: 4) {
-                    Text(verbatim: turn.files.count == 1 ? "1 file" : "\(turn.files.count) files")
-                    if turn.added > 0 { Text(verbatim: "+\(turn.added)").foregroundColor(Color(hex: "#22C55E")) }
-                    if turn.removed > 0 { Text(verbatim: "−\(turn.removed)").foregroundColor(Color(hex: "#F4505E")) }
-                }
-            }
-            ForEach(StepKind.allCases.filter { turn.tally[$0, default: 0] > 0 }, id: \.self) { kind in
-                HStack(spacing: 2) {
-                    Image(systemName: kind.symbol)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(kind.tint.opacity(0.75))
-                    Text(verbatim: "×\(turn.tally[kind, default: 0])")
-                }
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active)) { tl in
+            let p = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+            let eased = p * p * (3 - 2 * p)
+            GeometryReader { geo in
+                let w = geo.size.width * 0.4
+                LinearGradient(colors: [.clear, tint, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: w, height: 2)
+                    .offset(x: -w + (geo.size.width + w) * eased)
             }
         }
-        .font(.system(size: 10, design: .monospaced))
-        .foregroundColor(Color(hex: "#6B7079"))
-        .lineLimit(1)
+        .frame(height: 2)
+        .allowsHitTesting(false)
     }
 }
 
@@ -4094,46 +4117,35 @@ extension StepKind {
         case .test:   "testtube.2"
         case .web:    "globe"
         case .agent:  "person.2"
-        case .plan:   "checklist"
+        case .plan:   "sparkle"
         case .fail:   "exclamationmark.triangle"
         }
     }
 
-    /// By group, not by tool: blue looks, green changes, white runs, purple plans.
+    /// By group, not by tool: blue looks, green changes, indigo runs, teal tests, purple thinks.
     var tint: Color {
         switch self {
-        case .search, .read, .web: Color(hex: "#62A8FF")
-        case .edit:                Color(hex: "#4FF0A8")
-        case .run:                 Color(hex: "#E2E8F0")
-        case .test:                Color(hex: "#2DD4BF")
-        case .agent, .plan:        Color(hex: "#C084FC")
-        case .fail:                Color(hex: "#FF5A6A")
+        case .search, .read, .web: Color(hex: "#0A84FF")
+        case .edit:                Color(hex: "#30D158")
+        case .run:                 Color(hex: "#5E5CE6")
+        case .test:                Color(hex: "#64D2FF")
+        case .agent, .plan:        Color(hex: "#BF5AF2")
+        case .fail:                Color(hex: "#FF453A")
         }
     }
-}
 
-struct TickerShimmerText: View {
-    let text: String
-    var font: Font = .system(size: 13, weight: .medium)
-    var paused: Bool = false
-    @Environment(\.islandViewActive) private var viewActive
-
-    var body: some View {
-        // A 2.2 s sweep at display refresh rate. Paused when hidden.
-        TimelineView(.animation(paused: paused || !viewActive)) { tl in
-            let t = tl.date.timeIntervalSinceReferenceDate
-            let p = CGFloat(t.truncatingRemainder(dividingBy: 2.2) / 2.2)
-            // phase sweeps -0.1 → 1.1 so white peak enters from left and exits right
-            let phase = p * 1.2 - 0.1
-            Text(text)
-                .font(font)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .foregroundStyle(LinearGradient(stops: [
-                    .init(color: Color(hex: "#7c818a"), location: max(0, phase - 0.3)),
-                    .init(color: Color(hex: "#F2F3F5"), location: max(0, min(1, phase))),
-                    .init(color: Color(hex: "#7c818a"), location: min(1, phase + 0.3)),
-                ], startPoint: .leading, endPoint: .trailing))
+    /// What the agent is doing, as the activity box says it.
+    var activity: String {
+        switch self {
+        case .search: String(localized: "Searching")
+        case .read:   String(localized: "Reading")
+        case .edit:   String(localized: "Editing")
+        case .run:    String(localized: "Running")
+        case .test:   String(localized: "Testing")
+        case .web:    String(localized: "Browsing")
+        case .agent:  String(localized: "Delegating")
+        case .plan:   String(localized: "Planning")
+        case .fail:   String(localized: "Failed")
         }
     }
 }
@@ -4905,7 +4917,7 @@ struct CardBackground<Content: View>: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22)
-                .fill(Color(hex: "#161719"))
+                .fill(CardMaterial.fill)
                 .overlay(
                     // beeprio's island-wash: radial-gradient(90% 100% at 50% 150%, wash, transparent 72%)
                     EllipticalGradient(
@@ -4920,14 +4932,23 @@ struct CardBackground<Content: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 22))
                 )
                 .overlay(
+                    // Lit along its top edge.
                     RoundedRectangle(cornerRadius: 22)
-                        .stroke(Color.white.opacity(0.035), lineWidth: 1)
+                        .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.025)],
+                                                     startPoint: .top, endPoint: .bottom), lineWidth: 1)
                 )
 
             if let content = content {
                 content()
             }
         }
+    }
+}
+
+/// The cards' surface: a soft gradient, lighter at the top.
+enum CardMaterial {
+    static var fill: LinearGradient {
+        LinearGradient(colors: [Color(hex: "#1F2023"), Color(hex: "#17181A")], startPoint: .top, endPoint: .bottom)
     }
 }
 
@@ -4940,7 +4961,7 @@ extension CardBackground where Content == EmptyView {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22)
-                .fill(Color(hex: "#161719"))
+                .fill(CardMaterial.fill)
                 .overlay(
                     // beeprio's island-wash: radial-gradient(90% 100% at 50% 150%, wash, transparent 72%)
                     EllipticalGradient(
@@ -4955,8 +4976,10 @@ extension CardBackground where Content == EmptyView {
                     .clipShape(RoundedRectangle(cornerRadius: 22))
                 )
                 .overlay(
+                    // Lit along its top edge.
                     RoundedRectangle(cornerRadius: 22)
-                        .stroke(Color.white.opacity(0.035), lineWidth: 1)
+                        .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.025)],
+                                                     startPoint: .top, endPoint: .bottom), lineWidth: 1)
                 )
         }
     }

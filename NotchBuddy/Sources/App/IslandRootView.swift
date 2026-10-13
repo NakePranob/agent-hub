@@ -370,15 +370,19 @@ struct BotPlacement: View {
                     .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             }
 
-            // The app the focused session runs in, at the robot's shoulder, ringed in its state.
-            if state.mode == .expanded, state.view == .overview, !state.mochiOnDesktop, !state.isDraggingBot,
-               let task = state.focusTask.map(state.cardTask), Self.isSession(task) {
-                PillLogo(task: task, size: 16)
-                    .padding(2)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color(hex: "#161719")))
-                    .position(x: cx - diameter * 0.5, y: cy - diameter * 0.42)
-                    .transition(.opacity)
+            // What the focused session is doing, at the robot's shoulder: a symbol on the open
+            // island, a dot beside the notch.
+            let showsBadge = (state.mode == .expanded && state.view == .overview) || state.mode == .compact
+            if showsBadge, !state.mochiOnDesktop, !state.isDraggingBot,
+               let task = state.focusTask.map(state.cardTask),
+               let status = RobotStatusBadge.Status(task) {
+                RobotStatusBadge(status: status, dotOnly: state.mode == .compact)
+                    .position(x: cx - diameter * (state.mode == .compact ? 0.42 : 0.5),
+                              y: cy - diameter * 0.42)
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: status)
             }
+
         }
         // Branch switch (uploading ↔ normal) animates with a fast spring: uploading dot
         // scales out at bar-end while normal bot scales in at choose position.
@@ -387,11 +391,98 @@ struct BotPlacement: View {
         // IslandWindowController — not SwiftUI gestures — so this is safe.
         .allowsHitTesting(false)
     }
+}
 
-    /// A coding agent's pill, not a service's.
-    private static func isSession(_ task: AgentTask) -> Bool {
-        guard let def = PillCatalog.definition(for: task.id) else { return !task.isIntegration }
-        return def.category == .workspace || def.category == .agent
+/// The robot's status badge, like a chat app's: working dots, a spark while it thinks,
+/// "!" while it waits for you, a check when done, a cross on an error. Nothing when idle.
+struct RobotStatusBadge: View {
+    enum Status: Equatable {
+        case thinking, working, waiting, done, error
+
+        init?(_ task: AgentTask, now: Date = Date()) {
+            switch task.state {
+            case .approval, .question: self = .waiting
+            case .error:               self = .error
+            case .finished:            self = .done
+            case .working, .thinking, .searching:
+                self = task.turn != nil && ActivityBox.current(task) == nil ? .thinking : .working
+            default:
+                // The finished view covers the overview for its first seconds: the check
+                // still shows when the overview comes back.
+                guard let end = task.turn?.endedAt, now.timeIntervalSince(end) < 10 else { return nil }
+                self = .done
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .thinking: Color(hex: "#BF5AF2")
+            case .working:  Color(hex: "#0A84FF")
+            case .waiting:  Color(hex: "#FF9F0A")
+            case .done:     Color(hex: "#30D158")
+            case .error:    Color(hex: "#FF453A")
+            }
+        }
+    }
+
+    let status: Status
+    /// Beside the notch the robot is too small for a symbol: just the colour.
+    var dotOnly = false
+    @Environment(\.islandViewActive) private var active
+    /// The check goes after a few seconds; the card still says the turn is done.
+    @State private var checkGone = false
+
+    var body: some View {
+        let size: CGFloat = dotOnly ? 7 : 18
+        ZStack {
+            if !(status == .done && checkGone) {
+                ZStack {
+                    Circle().fill(status.color)
+                    if !dotOnly { symbol }
+                }
+                .frame(width: size, height: size)
+                .padding(dotOnly ? 1.5 : 2.5)
+                .background(Circle().fill(Color(hex: "#1B1C1F")))
+                .transition(.scale(scale: 0.4).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: checkGone)
+        .task(id: status) {
+            checkGone = false
+            guard status == .done else { return }
+            try? await Task.sleep(for: .seconds(5))
+            checkGone = true
+        }
+    }
+
+    @ViewBuilder private var symbol: some View {
+        switch status {
+        case .working:
+            // Three dots rising in turn, like someone typing.
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active)) { tl in
+                let t = tl.date.timeIntervalSinceReferenceDate
+                HStack(spacing: 2) {
+                    ForEach(0..<3) { i in
+                        let phase = (t * 1.4 - Double(i) * 0.18).truncatingRemainder(dividingBy: 1)
+                        let lift = max(0, sin(phase * .pi * 2))
+                        Circle().fill(.white)
+                            .frame(width: 3, height: 3)
+                            .opacity(0.55 + 0.45 * lift)
+                            .offset(y: -1.5 * lift)
+                    }
+                }
+            }
+        case .thinking: glyph("sparkle", 9)
+        case .waiting:  glyph("exclamationmark", 9)
+        case .done:     glyph("checkmark", 8.5)
+        case .error:    glyph("xmark", 8)
+        }
+    }
+
+    private func glyph(_ name: String, _ size: CGFloat) -> some View {
+        Image(systemName: name)
+            .font(.system(size: size, weight: .bold))
+            .foregroundColor(.white)
     }
 }
 

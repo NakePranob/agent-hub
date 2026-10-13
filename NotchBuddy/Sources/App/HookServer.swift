@@ -577,11 +577,6 @@ final class HookServer: @unchecked Sendable {
                 let idx = state.appendSessionDiff(diff, for: agentId)
                 let step = String.makeDiffStep(filename: diff.name, added: diff.added, removed: diff.removed, diffId: idx)
                 appendStep(id: agentId, session: sessionId, step: step)
-                updateTurn(id: agentId, session: sessionId) { turn in
-                    turn?.files.insert(diff.name)
-                    turn?.added += diff.added
-                    turn?.removed += diff.removed
-                }
                 RecapStore.shared.recordFileDiff(sessionId: recapSessionId, path: diff.name, added: diff.added, removed: diff.removed)
             }
 
@@ -1193,8 +1188,10 @@ final class HookServer: @unchecked Sendable {
         }
 
         // Bash: infer a more precise verb from the command
+        // Claude Code says what a command is for, which reads better than the command.
         if tool == "Bash", let cmd = input["command"] as? String {
-            return "\(StepKind.shell(cmd).verb) · \(oneLine(cmd))"
+            let purpose = oneLine(input["description"] as? String ?? "")
+            return "\(StepKind.shell(cmd).verb) · \(purpose.isEmpty ? oneLine(cmd) : purpose)"
         }
 
         // apply_patch: extract the first file name from the patch

@@ -71,7 +71,7 @@ rouge `rgba(244,80,94,.55)`, vert `rgba(52,211,153,.5)`, rose `rgba(244,114,182,
 
 | Vue | Hauteur | Bonhomme (x, Ø) | Contenu | Capture |
 |---|---|---|---|---|
-| `overview` | 196 | 64, 70 | carte gauche (tout l'espace restant) : ligne session + roue des étapes ; carte droite de 36 : logos des pastilles | 03 |
+| `overview` | 196 | 64, 70 | une carte : session (ligne du haut, demande, boîte d'activité) puis rail des pastilles de 46 | 03 |
 | `empty` | 150 | 70, 62 | « Rien ne tourne pour l'instant. » + bouton « Demander à Claude » | 16 |
 | `approval` | 206 | 62, 56 | agent + « Claude Code veut lancer une commande », bloc code, Refuser (N), Toujours autoriser, Autoriser (Y) | 04 |
 | `question` | 196 | 62, 56 | agent + question (1/N) + options en boutons (single-select ou multi-select) + « Reply in terminal » ; bouton Send/Next pour multi-select ou multi-questions ; « Other… » → saisie libre | 05 |
@@ -90,19 +90,20 @@ rouge `rgba(244,80,94,.55)`, vert `rgba(52,211,153,.5)`, rose `rgba(244,114,182,
 Centre vertical du bonhomme : 36 + (hauteur − 46) / 2, sauf `result` (y = 86).
 
 ### Carte de session (overview)
-- **Ligne du haut** : point + nom de la session (ou la rangée des sessions, voir `SessionLaneRow`), puis **la dernière demande** de l'utilisateur entre guillemets (11 pt `#8E939C`, tronquée, complète au survol), à droite **le temps du tour** (`0:42`, qui compte tant que l'agent travaille, puis « Done · 2:14 »). Sans demande encore : le sous-titre de session de la pastille.
-- **Roue des étapes** (64 pt, masque dégradé haut/bas) : l'étape précédente au-dessus (réduite à 84 %, atténuée), l'étape en cours au milieu, le **résumé du tour** en dessous. Chaque nouvelle étape fait monter la roue (ressort 0,42 s) ; la ligne du milieu ne bouge pas. Seules les étapes du tour en cours (depuis la demande) y passent.
-- Chaque étape a son **icône selon son type**, lu dans le verbe que le serveur de hooks écrit (`StepKind.of`) : chercher, lire, web en bleu `#62A8FF` ; modifier en vert `#4FF0A8` ; lancer en blanc `#E2E8F0` ; tests `#2DD4BF` ; sous-agent et plan en violet `#C084FC` ; échec en rouge `#FF5A6A`. Au milieu, l'icône est dans un carré de 20 pt teinté à 16 % ; le verbe (13 pt semibold, scintillant pendant le travail) puis la cible en monospace 12 pt.
-- « Thinking… » (étincelle violette) entre la demande et le premier outil. En fin de tour, la ligne du milieu devient la réponse derrière une coche verte, et la carte s'éclaire en vert par le bas tant que la pastille est en `finished`.
-- **Résumé** : fichiers modifiés et lignes `+N −M`, puis une icône ×N par type d'étape du tour (`AgentTurn`, tenu par `HookServer` pour la pastille et pour chaque session).
-- Le **logo de l'app** où tourne la session (VS Code, Terminal…) est posé à l'épaule du robot, avec l'anneau de son état.
+- **Matière « Soft »** de toutes les cartes (`CardBackground`) : dégradé `#1F2023` → `#17181A`, bord éclairé en haut (blanc 8 % → 2,5 %), rayon 22. Dans l'overview, la pastille en focus et le rail des autres pastilles forment **une seule carte**, séparés par un filet blanc 6 % ; la lumière de l'étape en cours (sa couleur à 18 %) monte du côté du robot.
+- **Ligne du haut** : logo de l'app (14 pt), nom de la session 14 pt semibold (ou la rangée des sessions), à droite le temps du tour (`0:42`, puis « Done · 2:14 » en vert `#30D158`). Sans demande : le sous-titre de session dans une capsule.
+- **La demande** : une ligne 12,5 pt grise, avec un filet de 2 pt à gauche (citation). En fin de tour, elle monte dans une capsule à côté du nom.
+- **Boîte d'activité** (36 pt, rayon 12, blanc 5 %) : l'icône du type d'étape dans un carré de 22 pt teinté à 20 %, le verbe au présent continu (Searching, Reading, Editing, Running, Testing, Browsing, Delegating, Planning) en 13 pt semibold, la cible en 12,5 pt grise (pour une commande, sa `description` quand Claude Code l'envoie), à droite « step N ». Tant que l'agent travaille, une lumière de la couleur du type court le long du bord bas (1,6 s). « Thinking » (étincelle violette) avant le premier outil. En fin de tour, la boîte contient la réponse (2 lignes) derrière une coche verte, et la carte s'éclaire en vert par le bas tant que la pastille est en `finished`.
+- Fin de tour : à droite de la réponse, un bouton capsule blanc « Open VS Code » (le logo et le nom de l'app où tourne la session : son terminal, Cursor…) ramène à l'app, puis l'île se replie.
+- **Badge d'état du robot** (`RobotStatusBadge`), à l'épaule gauche, cerclé de `#1B1C1F` : trois points qui montent tour à tour en bleu `#0A84FF` pendant le travail, étincelle violette pendant la réflexion, « ! » orange quand l'agent attend, coche verte en fin de tour (5 s), croix rouge sur une erreur ; rien au repos. Île repliée : un simple point de la même couleur à côté du robot.
+- Couleurs par type (`StepKind.tint`) : chercher, lire, web `#0A84FF` ; modifier `#30D158` ; lancer `#5E5CE6` ; tests `#64D2FF` ; sous-agent, plan `#BF5AF2` ; échec `#FF453A`.
 
 ### Diff en direct
 
 Quand une étape du fil est une modification de fichier (préfixe interne `\u{E001}`), elle s'affiche avec le nom du fichier et le bilan `+N −M` en couleur. Un clic sur la ligne du milieu ou celle du dessus ouvre la carte diff (voir DiffCardView) dans la carte gauche de la vue principale, en remplacement du fil — que la pastille soit intégrée (integration_claude, agent_cursor…) ou non. Échap ou le bouton ← de l'en-tête ferme la carte. En fin de tâche (Stop), la ligne du milieu devient la réponse, en texte statique, tant que la tâche n'est pas relancée ; elle est construite à partir du dernier message de l'assistant (champ `last_assistant_message` de l'événement Stop, nettoyé du Markdown par `DiffEngine.toOneLine` — premier paragraphe utile uniquement).
 
 ### Pastilles (overview)
-- Carte droite de 36 pt (une capsule) : le logo des autres pastilles (`PillLogo` 22 pt, anneau d'état, badge), dans l'ordre du catalogue, écart 8, nom au survol. Trois tiennent ; au-delà, la dernière place devient « +N », avec un point de la couleur la plus urgente des pastilles cachées (attend, erreur, travaille).
+- Rail de 46 pt dans la carte de l'overview, après un filet : le logo des autres pastilles (`PillLogo` 22 pt, anneau d'état, badge), dans l'ordre du catalogue, écart 8, nom au survol. Trois tiennent ; au-delà, la dernière place devient « +N », avec un point de la couleur la plus urgente des pastilles cachées (attend, erreur, travaille).
 - « +N » ouvre par-dessus la carte gauche la liste « Apps » : toutes les autres pastilles, en pastilles nommées (3 colonnes, défilement au-delà de 2 rangées). Un clic met la pastille en focus et ferme la liste, comme ‹, Échap, « +N » ou la fermeture de l'île.
 
 ### Catalogue de pastilles
